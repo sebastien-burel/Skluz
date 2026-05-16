@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct TunnelDraft {
     var id: UUID = UUID()
@@ -7,6 +8,7 @@ struct TunnelDraft {
     var sshHost: String = ""
     var sshUser: String = ""
     var sshPortText: String = ""
+    var identityFile: String = ""
     var localPortText: String = ""
     var remoteHost: String = ""
     var remotePortText: String = ""
@@ -25,6 +27,7 @@ struct TunnelDraft {
         self.sshHost = tunnel.sshHost
         self.sshUser = tunnel.sshUser ?? ""
         self.sshPortText = tunnel.sshPort.map(String.init) ?? ""
+        self.identityFile = tunnel.identityFile ?? ""
         self.localPortText = String(tunnel.localPort)
         self.remoteHost = tunnel.remoteHost ?? ""
         self.remotePortText = tunnel.remotePort.map(String.init) ?? ""
@@ -69,6 +72,7 @@ struct TunnelDraft {
             sshHost: trimmed(sshHost),
             sshUser: optional(sshUser),
             sshPort: sshPort,
+            identityFile: optional(identityFile),
             localPort: localPort,
             remoteHost: type != .dynamic ? optional(remoteHost) : nil,
             remotePort: remotePort,
@@ -92,6 +96,7 @@ struct TunnelDraft {
 
 struct TunnelEditorView: View {
     @State private var draft: TunnelDraft
+    @State private var isPickingIdentityFile = false
     private let isEditing: Bool
     private let onSave: (Tunnel) -> Void
     private let onDelete: ((UUID) -> Void)?
@@ -131,6 +136,12 @@ struct TunnelEditorView: View {
                     TextField("Host", text: $draft.sshHost, prompt: Text("bastion.example.com"))
                     TextField("User", text: $draft.sshUser, prompt: Text("(optionnel)"))
                     TextField("Port SSH", text: $draft.sshPortText, prompt: Text("22"))
+                    HStack {
+                        TextField("Clé (-i)", text: $draft.identityFile,
+                                  prompt: Text("(optionnel — sinon agent SSH)"))
+                        Button("Parcourir…") { isPickingIdentityFile = true }
+                            .controlSize(.small)
+                    }
                 }
 
                 Section("Forwarding") {
@@ -184,7 +195,16 @@ struct TunnelEditorView: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
         }
-        .frame(minWidth: 440, idealWidth: 460, minHeight: 500)
+        .frame(minWidth: 440, idealWidth: 460, minHeight: 520)
+        .fileImporter(
+            isPresented: $isPickingIdentityFile,
+            allowedContentTypes: [.data, .item],
+            allowsMultipleSelection: false
+        ) { result in
+            if case .success(let urls) = result, let url = urls.first {
+                draft.identityFile = url.path
+            }
+        }
     }
 }
 

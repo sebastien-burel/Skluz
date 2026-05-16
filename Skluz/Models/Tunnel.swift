@@ -7,6 +7,7 @@ nonisolated struct Tunnel: Codable, Identifiable, Hashable, Sendable {
     var sshHost: String
     var sshUser: String?
     var sshPort: Int?
+    var identityFile: String?
     var localPort: Int
     var remoteHost: String?
     var remotePort: Int?
@@ -23,6 +24,7 @@ nonisolated struct Tunnel: Codable, Identifiable, Hashable, Sendable {
         sshHost: String,
         sshUser: String? = nil,
         sshPort: Int? = nil,
+        identityFile: String? = nil,
         localPort: Int,
         remoteHost: String? = nil,
         remotePort: Int? = nil,
@@ -38,6 +40,7 @@ nonisolated struct Tunnel: Codable, Identifiable, Hashable, Sendable {
         self.sshHost = sshHost
         self.sshUser = sshUser
         self.sshPort = sshPort
+        self.identityFile = identityFile
         self.localPort = localPort
         self.remoteHost = remoteHost
         self.remotePort = remotePort

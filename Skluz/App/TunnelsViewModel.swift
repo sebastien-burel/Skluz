@@ -4,12 +4,31 @@ import Observation
 @Observable
 final class TunnelsViewModel {
     private(set) var tunnels: [Tunnel] = []
+    private(set) var states: [UUID: TunnelState] = [:]
     private(set) var lastError: String?
 
     private let store: TunnelStore
+    private let runner: TunnelRunner
+    nonisolated(unsafe) private var observationTask: Task<Void, Never>?
 
-    init(store: TunnelStore) {
+    init(store: TunnelStore, runner: TunnelRunner) {
         self.store = store
+        self.runner = runner
+        startObserving()
+    }
+
+    deinit {
+        observationTask?.cancel()
+    }
+
+    private func startObserving() {
+        let stream = runner.stateChanges
+        observationTask = Task { [weak self] in
+            for await change in stream {
+                guard let self else { return }
+                self.states[change.id] = change.state
+            }
+        }
     }
 
     func load() async {
@@ -33,12 +52,22 @@ final class TunnelsViewModel {
     }
 
     func remove(id: UUID) async {
+        await runner.stop(id: id)
         do {
             try await store.remove(id: id)
             tunnels = await store.tunnels
+            states.removeValue(forKey: id)
             lastError = nil
         } catch {
             lastError = "Suppression impossible : \(error)"
         }
+    }
+
+    func startTunnel(_ tunnel: Tunnel) {
+        Task { [runner] in await runner.start(tunnel) }
+    }
+
+    func stopTunnel(id: UUID) {
+        Task { [runner] in await runner.stop(id: id) }
     }
 }

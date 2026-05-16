@@ -2,6 +2,7 @@ import SwiftUI
 
 struct MenuBarPopoverView: View {
     let viewModel: TunnelsViewModel
+    var onEditorPresentationChange: (Bool) -> Void = { _ in }
     @State private var editorState: EditorState?
 
     enum EditorState: Identifiable {
@@ -27,6 +28,9 @@ struct MenuBarPopoverView: View {
         .frame(width: 360)
         .sheet(item: $editorState) { state in
             editor(for: state)
+        }
+        .onChange(of: editorState != nil) { _, isPresented in
+            onEditorPresentationChange(isPresented)
         }
     }
 
@@ -92,10 +96,12 @@ struct MenuBarPopoverView: View {
         ScrollView {
             VStack(spacing: 0) {
                 ForEach(Array(viewModel.tunnels.enumerated()), id: \.element.id) { index, tunnel in
+                    let state = viewModel.states[tunnel.id] ?? .stopped
                     TunnelRowView(
                         tunnel: tunnel,
+                        state: state,
                         onEdit: { editorState = .edit(tunnel) },
-                        onToggle: {}
+                        onToggle: { toggle(tunnel: tunnel, state: state) }
                     )
                     if index < viewModel.tunnels.count - 1 {
                         Divider().padding(.leading, 12)
@@ -115,6 +121,15 @@ struct MenuBarPopoverView: View {
             popoverActionRow(label: "Quitter Skluz", systemImage: "power") {
                 NSApp.terminate(nil)
             }
+        }
+    }
+
+    private func toggle(tunnel: Tunnel, state: TunnelState) {
+        switch state {
+        case .running, .starting, .reconnecting:
+            viewModel.stopTunnel(id: tunnel.id)
+        case .stopped, .failed:
+            viewModel.startTunnel(tunnel)
         }
     }
 
