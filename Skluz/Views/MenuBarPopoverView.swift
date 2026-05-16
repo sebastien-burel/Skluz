@@ -2,17 +2,19 @@ import SwiftUI
 
 struct MenuBarPopoverView: View {
     let viewModel: TunnelsViewModel
-    var onEditorPresentationChange: (Bool) -> Void = { _ in }
-    @State private var editorState: EditorState?
+    var onSheetPresentationChange: (Bool) -> Void = { _ in }
+    @State private var activeSheet: ActiveSheet?
 
-    enum EditorState: Identifiable {
+    enum ActiveSheet: Identifiable {
         case create
         case edit(Tunnel)
+        case preferences
 
         var id: String {
             switch self {
             case .create: "create"
-            case .edit(let tunnel): tunnel.id.uuidString
+            case .edit(let tunnel): "edit-\(tunnel.id.uuidString)"
+            case .preferences: "preferences"
             }
         }
     }
@@ -26,17 +28,17 @@ struct MenuBarPopoverView: View {
             footer
         }
         .frame(width: 360)
-        .sheet(item: $editorState) { state in
-            editor(for: state)
+        .sheet(item: $activeSheet) { sheet in
+            view(for: sheet)
         }
-        .onChange(of: editorState != nil) { _, isPresented in
-            onEditorPresentationChange(isPresented)
+        .onChange(of: activeSheet != nil) { _, isPresented in
+            onSheetPresentationChange(isPresented)
         }
     }
 
     @ViewBuilder
-    private func editor(for state: EditorState) -> some View {
-        switch state {
+    private func view(for sheet: ActiveSheet) -> some View {
+        switch sheet {
         case .create:
             TunnelEditorView(initial: nil, configHosts: viewModel.configHosts) { tunnel in
                 Task { await viewModel.upsert(tunnel) }
@@ -52,6 +54,8 @@ struct MenuBarPopoverView: View {
                     Task { await viewModel.remove(id: id) }
                 }
             )
+        case .preferences:
+            PreferencesView()
         }
     }
 
@@ -60,7 +64,7 @@ struct MenuBarPopoverView: View {
             Text("Skluz").font(.headline)
             Spacer()
             Button {
-                // TODO Phase 8 — PreferencesView
+                activeSheet = .preferences
             } label: {
                 Image(systemName: "gearshape")
             }
@@ -101,7 +105,7 @@ struct MenuBarPopoverView: View {
                     TunnelRowView(
                         tunnel: tunnel,
                         state: state,
-                        onEdit: { editorState = .edit(tunnel) },
+                        onEdit: { activeSheet = .edit(tunnel) },
                         onToggle: { toggle(tunnel: tunnel, state: state) }
                     )
                     if index < viewModel.tunnels.count - 1 {
@@ -116,7 +120,7 @@ struct MenuBarPopoverView: View {
     private var footer: some View {
         VStack(spacing: 0) {
             popoverActionRow(label: "Nouveau tunnel", systemImage: "plus") {
-                editorState = .create
+                activeSheet = .create
             }
             Divider().padding(.leading, 12)
             popoverActionRow(label: "Quitter Skluz", systemImage: "power") {

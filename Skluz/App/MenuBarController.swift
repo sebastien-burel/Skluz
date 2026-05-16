@@ -4,7 +4,7 @@ import SwiftUI
 final class MenuBarController: NSObject, NSPopoverDelegate {
     private let statusItem: NSStatusItem
     private let popover: NSPopover
-    private var isEditorOpen = false
+    private var isSheetOpen = false
     nonisolated(unsafe) private var outsideClickMonitor: Any?
 
     init(viewModel: TunnelsViewModel) {
@@ -26,7 +26,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
         popover.animates = true
         popover.delegate = self
         let root = MenuBarPopoverView(viewModel: viewModel) { [weak self] isOpen in
-            self?.isEditorOpen = isOpen
+            self?.isSheetOpen = isOpen
         }
         popover.contentViewController = NSHostingController(rootView: root)
     }
@@ -63,10 +63,11 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
     }
 
     private func closePopover() {
-        // L'éditeur (sheet SwiftUI) doit garder le popover ouvert : sa fermeture
-        // remet l'état SwiftUI à zéro proprement. Fermer le popover par-dessous
-        // laisserait la sheet "logiquement présentée" et bloquerait sa réouverture.
-        guard !isEditorOpen else { return }
+        // Une sheet SwiftUI ouverte (éditeur ou préférences) doit garder le
+        // popover ouvert : sa fermeture remet l'état SwiftUI à zéro proprement.
+        // Fermer le popover par-dessous laisserait la sheet "logiquement
+        // présentée" et bloquerait sa réouverture.
+        guard !isSheetOpen else { return }
         popover.performClose(nil)
         removeOutsideClickMonitor()
     }
@@ -74,7 +75,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
     // MARK: - NSPopoverDelegate
 
     func popoverShouldClose(_ popover: NSPopover) -> Bool {
-        !isEditorOpen
+        !isSheetOpen
     }
 
     func popoverDidClose(_ notification: Notification) {
