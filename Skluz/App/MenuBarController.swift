@@ -5,18 +5,20 @@ final class MenuBarController: NSObject {
     private let statusItem: NSStatusItem
     private let popover: NSPopover
 
-    override init() {
+    init(viewModel: TunnelsViewModel) {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         popover = NSPopover()
         super.init()
-        configurePopover()
+        configurePopover(viewModel: viewModel)
         configureButton()
     }
 
-    private func configurePopover() {
+    private func configurePopover(viewModel: TunnelsViewModel) {
         popover.behavior = .transient
         popover.animates = true
-        popover.contentViewController = NSHostingController(rootView: MenuBarPopoverView())
+        popover.contentViewController = NSHostingController(
+            rootView: MenuBarPopoverView(viewModel: viewModel)
+        )
     }
 
     private func configureButton() {

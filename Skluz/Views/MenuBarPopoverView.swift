@@ -1,21 +1,53 @@
 import SwiftUI
 
 struct MenuBarPopoverView: View {
-    private let tunnels: [FakeTunnel] = [
-        FakeTunnel(name: "prod-postgres", state: .running),
-        FakeTunnel(name: "staging-redis", state: .stopped),
-        FakeTunnel(name: "dev-bastion", state: .failed)
-    ]
+    let viewModel: TunnelsViewModel
+    @State private var editorState: EditorState?
+
+    enum EditorState: Identifiable {
+        case create
+        case edit(Tunnel)
+
+        var id: String {
+            switch self {
+            case .create: "create"
+            case .edit(let tunnel): tunnel.id.uuidString
+            }
+        }
+    }
 
     var body: some View {
         VStack(spacing: 0) {
             header
             Divider()
-            tunnelList
+            content
             Divider()
             footer
         }
-        .frame(width: 320)
+        .frame(width: 360)
+        .sheet(item: $editorState) { state in
+            editor(for: state)
+        }
+    }
+
+    @ViewBuilder
+    private func editor(for state: EditorState) -> some View {
+        switch state {
+        case .create:
+            TunnelEditorView(initial: nil) { tunnel in
+                Task { await viewModel.upsert(tunnel) }
+            }
+        case .edit(let tunnel):
+            TunnelEditorView(
+                initial: tunnel,
+                onSave: { saved in
+                    Task { await viewModel.upsert(saved) }
+                },
+                onDelete: { id in
+                    Task { await viewModel.remove(id: id) }
+                }
+            )
+        }
     }
 
     private var header: some View {
@@ -23,7 +55,7 @@ struct MenuBarPopoverView: View {
             Text("Skluz").font(.headline)
             Spacer()
             Button {
-                // TODO Phase 8 — ouvrir PreferencesView
+                // TODO Phase 8 — PreferencesView
             } label: {
                 Image(systemName: "gearshape")
             }
@@ -34,21 +66,50 @@ struct MenuBarPopoverView: View {
         .padding(.vertical, 8)
     }
 
+    @ViewBuilder
+    private var content: some View {
+        if viewModel.tunnels.isEmpty {
+            emptyState
+        } else {
+            tunnelList
+        }
+    }
+
+    private var emptyState: some View {
+        VStack(spacing: 6) {
+            Text("Aucun tunnel").font(.headline)
+            Text("Cliquez sur « Nouveau tunnel » pour commencer.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 24)
+        .padding(.horizontal, 12)
+    }
+
     private var tunnelList: some View {
-        VStack(spacing: 0) {
-            ForEach(Array(tunnels.enumerated()), id: \.element.id) { index, tunnel in
-                TunnelRowView(tunnel: tunnel)
-                if index < tunnels.count - 1 {
-                    Divider().padding(.leading, 12)
+        ScrollView {
+            VStack(spacing: 0) {
+                ForEach(Array(viewModel.tunnels.enumerated()), id: \.element.id) { index, tunnel in
+                    TunnelRowView(
+                        tunnel: tunnel,
+                        onEdit: { editorState = .edit(tunnel) },
+                        onToggle: {}
+                    )
+                    if index < viewModel.tunnels.count - 1 {
+                        Divider().padding(.leading, 12)
+                    }
                 }
             }
         }
+        .frame(maxHeight: 400)
     }
 
     private var footer: some View {
         VStack(spacing: 0) {
             popoverActionRow(label: "Nouveau tunnel", systemImage: "plus") {
-                // TODO Phase 4 — ouvrir TunnelEditorView
+                editorState = .create
             }
             Divider().padding(.leading, 12)
             popoverActionRow(label: "Quitter Skluz", systemImage: "power") {
@@ -71,8 +132,4 @@ struct MenuBarPopoverView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
     }
-}
-
-#Preview {
-    MenuBarPopoverView()
 }

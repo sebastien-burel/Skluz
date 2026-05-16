@@ -1,19 +1,14 @@
 import AppKit
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    private var menuBarController: MenuBarController?
     private let tunnelStore = TunnelStore()
+    private lazy var viewModel = TunnelsViewModel(store: tunnelStore)
+    private var menuBarController: MenuBarController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        menuBarController = MenuBarController()
-        Task { [tunnelStore] in
-            do {
-                try await tunnelStore.load()
-                let count = await tunnelStore.tunnels.count
-                print("[Skluz] loaded \(count) tunnel(s) from disk")
-            } catch {
-                print("[Skluz] failed to load tunnels: \(error)")
-            }
+        menuBarController = MenuBarController(viewModel: viewModel)
+        Task { [viewModel] in
+            await viewModel.load()
         }
     }
 }

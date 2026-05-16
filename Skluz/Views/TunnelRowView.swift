@@ -1,30 +1,27 @@
 import SwiftUI
 
-struct FakeTunnel: Identifiable, Hashable {
-    let id = UUID()
-    let name: String
-    let state: State
-
-    enum State {
-        case running, stopped, failed
-    }
-}
-
 struct TunnelRowView: View {
-    let tunnel: FakeTunnel
+    let tunnel: Tunnel
+    let onEdit: () -> Void
+    let onToggle: () -> Void
 
     var body: some View {
         HStack(spacing: 10) {
             stateDot
-            Text(tunnel.name).font(.body)
-            Spacer()
-            Button(toggleLabel) {
-                // TODO Phase 5 — start/stop via TunnelRunner
+            VStack(alignment: .leading, spacing: 2) {
+                Text(tunnel.name).font(.body)
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
             }
-            .controlSize(.small)
-            Button {
-                // TODO Phase 4 — édition
-            } label: {
+            Spacer(minLength: 8)
+            Button("Start", action: onToggle)
+                .controlSize(.small)
+                .disabled(true)
+                .help("Démarrage : disponible à partir de la Phase 5")
+            Button(action: onEdit) {
                 Image(systemName: "pencil")
             }
             .buttonStyle(.borderless)
@@ -36,31 +33,20 @@ struct TunnelRowView: View {
 
     private var stateDot: some View {
         Circle()
-            .fill(stateColor)
+            .fill(tunnel.enabled ? Color.secondary : Color.gray.opacity(0.35))
             .frame(width: 9, height: 9)
-            .help(stateTooltip)
+            .help(tunnel.enabled ? "Activé (arrêté)" : "Désactivé")
     }
 
-    private var stateColor: Color {
-        switch tunnel.state {
-        case .running: .green
-        case .stopped: .secondary
-        case .failed:  .red
-        }
-    }
-
-    private var stateTooltip: String {
-        switch tunnel.state {
-        case .running: "En cours"
-        case .stopped: "Arrêté"
-        case .failed:  "Échec"
-        }
-    }
-
-    private var toggleLabel: String {
-        switch tunnel.state {
-        case .running:           "Stop"
-        case .stopped, .failed:  "Start"
+    private var subtitle: String {
+        let host = tunnel.sshUser.map { "\($0)@\(tunnel.sshHost)" } ?? tunnel.sshHost
+        switch tunnel.type {
+        case .localForward:
+            return "-L \(tunnel.localPort):\(tunnel.remoteHost ?? "?"):\(tunnel.remotePort ?? 0)  •  \(host)"
+        case .remoteForward:
+            return "-R \(tunnel.localPort):\(tunnel.remoteHost ?? "?"):\(tunnel.remotePort ?? 0)  •  \(host)"
+        case .dynamic:
+            return "-D \(tunnel.localPort)  •  \(host)"
         }
     }
 }
