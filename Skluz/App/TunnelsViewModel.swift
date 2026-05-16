@@ -11,12 +11,19 @@ final class TunnelsViewModel {
     private let store: TunnelStore
     private let runner: TunnelRunner
     private let configParser: SSHConfigParser
+    private let logStore: LogStore
     nonisolated(unsafe) private var observationTask: Task<Void, Never>?
 
-    init(store: TunnelStore, runner: TunnelRunner, configParser: SSHConfigParser) {
+    init(
+        store: TunnelStore,
+        runner: TunnelRunner,
+        configParser: SSHConfigParser,
+        logStore: LogStore
+    ) {
         self.store = store
         self.runner = runner
         self.configParser = configParser
+        self.logStore = logStore
         startObserving()
     }
 
@@ -66,6 +73,14 @@ final class TunnelsViewModel {
         } catch {
             lastError = "Suppression impossible : \(error)"
         }
+    }
+
+    func logLines(for id: UUID) async -> [String] {
+        await logStore.lines(for: id)
+    }
+
+    func clearLogs(for id: UUID) async {
+        await logStore.clear(id)
     }
 
     func startTunnel(_ tunnel: Tunnel) {

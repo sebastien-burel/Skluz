@@ -8,12 +8,14 @@ struct MenuBarPopoverView: View {
     enum ActiveSheet: Identifiable {
         case create
         case edit(Tunnel)
+        case logs(Tunnel)
         case preferences
 
         var id: String {
             switch self {
             case .create: "create"
             case .edit(let tunnel): "edit-\(tunnel.id.uuidString)"
+            case .logs(let tunnel): "logs-\(tunnel.id.uuidString)"
             case .preferences: "preferences"
             }
         }
@@ -54,6 +56,8 @@ struct MenuBarPopoverView: View {
                     Task { await viewModel.remove(id: id) }
                 }
             )
+        case .logs(let tunnel):
+            LogViewerView(tunnel: tunnel, viewModel: viewModel)
         case .preferences:
             PreferencesView()
         }
@@ -106,7 +110,8 @@ struct MenuBarPopoverView: View {
                         tunnel: tunnel,
                         state: state,
                         onEdit: { activeSheet = .edit(tunnel) },
-                        onToggle: { toggle(tunnel: tunnel, state: state) }
+                        onToggle: { toggle(tunnel: tunnel, state: state) },
+                        onShowLogs: { activeSheet = .logs(tunnel) }
                     )
                     if index < viewModel.tunnels.count - 1 {
                         Divider().padding(.leading, 12)

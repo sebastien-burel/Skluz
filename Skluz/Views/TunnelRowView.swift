@@ -5,6 +5,7 @@ struct TunnelRowView: View {
     let state: TunnelState
     let onEdit: () -> Void
     let onToggle: () -> Void
+    let onShowLogs: () -> Void
 
     var body: some View {
         HStack(spacing: 10) {
@@ -21,6 +22,11 @@ struct TunnelRowView: View {
             Button(toggleLabel, action: onToggle)
                 .controlSize(.small)
                 .disabled(!tunnel.enabled || isBusy)
+            Button(action: onShowLogs) {
+                Image(systemName: "text.alignleft")
+            }
+            .buttonStyle(.borderless)
+            .help("Logs")
             Button(action: onEdit) {
                 Image(systemName: "pencil")
             }

@@ -8,7 +8,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var viewModel = TunnelsViewModel(
         store: tunnelStore,
         runner: runner,
-        configParser: configParser
+        configParser: configParser,
+        logStore: logStore
     )
     private var menuBarController: MenuBarController?
 
