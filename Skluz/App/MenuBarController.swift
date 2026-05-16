@@ -1,12 +1,22 @@
 import AppKit
+import SwiftUI
 
 final class MenuBarController: NSObject {
     private let statusItem: NSStatusItem
+    private let popover: NSPopover
 
     override init() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        popover = NSPopover()
         super.init()
+        configurePopover()
         configureButton()
+    }
+
+    private func configurePopover() {
+        popover.behavior = .transient
+        popover.animates = true
+        popover.contentViewController = NSHostingController(rootView: MenuBarPopoverView())
     }
 
     private func configureButton() {
@@ -21,10 +31,16 @@ final class MenuBarController: NSObject {
             button.title = "Skluz"
         }
         button.target = self
-        button.action = #selector(handleClick(_:))
+        button.action = #selector(togglePopover(_:))
     }
 
-    @objc private func handleClick(_ sender: Any?) {
-        print("[Skluz] menubar clicked")
+    @objc private func togglePopover(_ sender: Any?) {
+        if popover.isShown {
+            popover.performClose(sender)
+            return
+        }
+        guard let button = statusItem.button else { return }
+        popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+        popover.contentViewController?.view.window?.makeKey()
     }
 }
