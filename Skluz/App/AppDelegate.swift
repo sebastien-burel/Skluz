@@ -3,8 +3,13 @@ import AppKit
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let tunnelStore = TunnelStore()
     private let logStore = LogStore()
+    private let configParser = SSHConfigParser()
     private lazy var runner = TunnelRunner(logStore: logStore)
-    private lazy var viewModel = TunnelsViewModel(store: tunnelStore, runner: runner)
+    private lazy var viewModel = TunnelsViewModel(
+        store: tunnelStore,
+        runner: runner,
+        configParser: configParser
+    )
     private var menuBarController: MenuBarController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {

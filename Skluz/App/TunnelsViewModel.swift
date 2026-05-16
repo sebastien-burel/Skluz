@@ -5,15 +5,18 @@ import Observation
 final class TunnelsViewModel {
     private(set) var tunnels: [Tunnel] = []
     private(set) var states: [UUID: TunnelState] = [:]
+    private(set) var configHosts: [SSHConfigHost] = []
     private(set) var lastError: String?
 
     private let store: TunnelStore
     private let runner: TunnelRunner
+    private let configParser: SSHConfigParser
     nonisolated(unsafe) private var observationTask: Task<Void, Never>?
 
-    init(store: TunnelStore, runner: TunnelRunner) {
+    init(store: TunnelStore, runner: TunnelRunner, configParser: SSHConfigParser) {
         self.store = store
         self.runner = runner
+        self.configParser = configParser
         startObserving()
     }
 
@@ -39,6 +42,7 @@ final class TunnelsViewModel {
         } catch {
             lastError = "Chargement impossible : \(error)"
         }
+        configHosts = await configParser.loadHosts()
     }
 
     func upsert(_ tunnel: Tunnel) async {

@@ -38,12 +38,13 @@ struct MenuBarPopoverView: View {
     private func editor(for state: EditorState) -> some View {
         switch state {
         case .create:
-            TunnelEditorView(initial: nil) { tunnel in
+            TunnelEditorView(initial: nil, configHosts: viewModel.configHosts) { tunnel in
                 Task { await viewModel.upsert(tunnel) }
             }
         case .edit(let tunnel):
             TunnelEditorView(
                 initial: tunnel,
+                configHosts: viewModel.configHosts,
                 onSave: { saved in
                     Task { await viewModel.upsert(saved) }
                 },

@@ -97,7 +97,9 @@ struct TunnelDraft {
 struct TunnelEditorView: View {
     @State private var draft: TunnelDraft
     @State private var isPickingIdentityFile = false
+    @State private var pickedConfigAlias: String?
     private let isEditing: Bool
+    private let configHosts: [SSHConfigHost]
     private let onSave: (Tunnel) -> Void
     private let onDelete: ((UUID) -> Void)?
 
@@ -105,6 +107,7 @@ struct TunnelEditorView: View {
 
     init(
         initial: Tunnel?,
+        configHosts: [SSHConfigHost],
         onSave: @escaping (Tunnel) -> Void,
         onDelete: ((UUID) -> Void)? = nil
     ) {
@@ -115,8 +118,21 @@ struct TunnelEditorView: View {
             self._draft = State(initialValue: TunnelDraft())
             self.isEditing = false
         }
+        self.configHosts = configHosts
         self.onSave = onSave
         self.onDelete = onDelete
+    }
+
+    private var selectableAliases: [SSHConfigHost] {
+        configHosts.filter(\.isSelectableAlias)
+    }
+
+    private func applyAlias(_ host: SSHConfigHost) {
+        draft.sshHost = host.aliasOrPattern
+        if let user = host.user { draft.sshUser = user }
+        if let port = host.port { draft.sshPortText = String(port) }
+        if let identity = host.identityFile { draft.identityFile = identity }
+        pickedConfigAlias = host.aliasOrPattern
     }
 
     var body: some View {
@@ -133,7 +149,28 @@ struct TunnelEditorView: View {
                 }
 
                 Section("Connexion SSH") {
-                    TextField("Host", text: $draft.sshHost, prompt: Text("bastion.example.com"))
+                    HStack {
+                        TextField("Host", text: $draft.sshHost, prompt: Text("bastion.example.com"))
+                            .onChange(of: draft.sshHost) { _, _ in pickedConfigAlias = nil }
+                        if !selectableAliases.isEmpty {
+                            Menu {
+                                ForEach(selectableAliases) { host in
+                                    Button(host.aliasOrPattern) { applyAlias(host) }
+                                }
+                            } label: {
+                                Image(systemName: "list.bullet")
+                            }
+                            .menuStyle(.borderlessButton)
+                            .fixedSize()
+                            .help("Choisir un hôte depuis ~/.ssh/config")
+                        }
+                    }
+                    if let alias = pickedConfigAlias {
+                        Label("Pré-rempli depuis ~/.ssh/config (« \(alias) »)",
+                              systemImage: "info.circle")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                     TextField("User", text: $draft.sshUser, prompt: Text("(optionnel)"))
                     TextField("Port SSH", text: $draft.sshPortText, prompt: Text("22"))
                     HStack {
@@ -209,13 +246,21 @@ struct TunnelEditorView: View {
 }
 
 #Preview("Création") {
-    TunnelEditorView(initial: nil, onSave: { _ in })
+    TunnelEditorView(
+        initial: nil,
+        configHosts: [
+            SSHConfigHost(aliasOrPattern: "dgx", hostname: "dgx.haruni.net",
+                          user: "sb", port: 2022, identityFile: "~/.ssh/id_ed25519")
+        ],
+        onSave: { _ in }
+    )
 }
 
 #Preview("Édition") {
     TunnelEditorView(
         initial: Tunnel(name: "prod-postgres", type: .localForward, sshHost: "bastion.example.com",
                         sshUser: "sebastien", localPort: 5432, remoteHost: "db.internal", remotePort: 5432),
+        configHosts: [],
         onSave: { _ in },
         onDelete: { _ in }
     )
