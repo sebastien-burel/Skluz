@@ -7,45 +7,33 @@ enum MenuBarIconStatus: Equatable {
     case failed         // au moins un échec (priorité max)
 }
 
-/// Icône menubar « écluse » dessinée par Core Graphics (plan §3) :
-/// deux portes verticales + le passage horizontal. Un pastille de
-/// couleur signale l'état agrégé des tunnels.
+/// Icône menubar « écluse » : glyphe template (asset MenuBarIcon, fond
+/// transparent, recoloré par macOS selon le thème) surmonté d'une pastille
+/// de couleur signalant l'état agrégé des tunnels (plan §3).
 enum MenuBarIcon {
+    private static let glyphSize = NSSize(width: 18, height: 18)
+
     static func image(status: MenuBarIconStatus) -> NSImage {
-        let size = NSSize(width: 22, height: 22)
-        let image = NSImage(size: size, flipped: false) { _ in
-            drawLock()
-            if let color = badgeColor(for: status) {
-                drawBadge(color: color, canvas: size)
-            }
+        let glyph = NSImage(named: "MenuBarIcon") ?? NSImage(
+            systemSymbolName: "circle.grid.cross", accessibilityDescription: "Skluz"
+        )!
+        glyph.size = glyphSize
+
+        guard let color = badgeColor(for: status) else {
+            glyph.isTemplate = true        // macOS gère clair/sombre
+            return glyph
+        }
+
+        let composed = NSImage(size: glyphSize, flipped: false) { rect in
+            // Glyphe teinté (labelColor s'adapte raisonnablement à la barre).
+            glyph.draw(in: rect)
+            NSColor.labelColor.set()
+            rect.fill(using: .sourceAtop)
+            drawBadge(color: color, canvas: rect.size)
             return true
         }
-        // Template (adaptatif clair/sombre) seulement sans pastille colorée.
-        image.isTemplate = (status == .neutral)
-        return image
-    }
-
-    private static func drawLock() {
-        let stroke = NSColor.labelColor
-        stroke.setStroke()
-
-        // Portes (deux traits verticaux courts).
-        for x in [7.5, 14.5] {
-            let gate = NSBezierPath()
-            gate.move(to: NSPoint(x: x, y: 5))
-            gate.line(to: NSPoint(x: x, y: 17))
-            gate.lineWidth = 2.2
-            gate.lineCapStyle = .round
-            gate.stroke()
-        }
-
-        // Passage (trait horizontal qui traverse au centre).
-        let passage = NSBezierPath()
-        passage.move(to: NSPoint(x: 3.5, y: 11))
-        passage.line(to: NSPoint(x: 18.5, y: 11))
-        passage.lineWidth = 2.2
-        passage.lineCapStyle = .round
-        passage.stroke()
+        composed.isTemplate = false
+        return composed
     }
 
     private static func badgeColor(for status: MenuBarIconStatus) -> NSColor? {
@@ -58,15 +46,14 @@ enum MenuBarIcon {
     }
 
     private static func drawBadge(color: NSColor, canvas: NSSize) {
-        let diameter: CGFloat = 8
+        let diameter: CGFloat = canvas.width * 0.42
         let rect = NSRect(
-            x: canvas.width - diameter - 1,
-            y: 0.5,
+            x: canvas.width - diameter,
+            y: 0,
             width: diameter,
             height: diameter
         )
-        // Liseré pour détacher la pastille du glyphe.
-        let halo = NSBezierPath(ovalIn: rect.insetBy(dx: -1.2, dy: -1.2))
+        let halo = NSBezierPath(ovalIn: rect.insetBy(dx: -1, dy: -1))
         NSColor.windowBackgroundColor.setFill()
         halo.fill()
 
