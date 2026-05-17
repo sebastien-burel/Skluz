@@ -42,9 +42,12 @@ struct MenuBarPopoverView: View {
     private func view(for sheet: ActiveSheet) -> some View {
         switch sheet {
         case .create:
-            TunnelEditorView(initial: nil, configHosts: viewModel.configHosts) { tunnel in
-                Task { await viewModel.upsert(tunnel) }
-            }
+            TunnelEditorView(
+                initial: nil,
+                configHosts: viewModel.configHosts,
+                onSave: { tunnel in Task { await viewModel.upsert(tunnel) } },
+                onTest: { await viewModel.test($0) }
+            )
         case .edit(let tunnel):
             TunnelEditorView(
                 initial: tunnel,
@@ -52,6 +55,7 @@ struct MenuBarPopoverView: View {
                 onSave: { saved in
                     Task { await viewModel.upsert(saved) }
                 },
+                onTest: { await viewModel.test($0) },
                 onDelete: { id in
                     Task { await viewModel.remove(id: id) }
                 }
@@ -124,11 +128,13 @@ struct MenuBarPopoverView: View {
 
     private var footer: some View {
         VStack(spacing: 0) {
-            popoverActionRow(label: "Nouveau tunnel", systemImage: "plus") {
+            popoverActionRow(label: "Nouveau tunnel", systemImage: "plus",
+                             shortcut: KeyEquivalent("n")) {
                 activeSheet = .create
             }
             Divider().padding(.leading, 12)
-            popoverActionRow(label: "Quitter Skluz", systemImage: "power") {
+            popoverActionRow(label: "Quitter Skluz", systemImage: "power",
+                             shortcut: KeyEquivalent("q")) {
                 NSApp.terminate(nil)
             }
         }
@@ -146,6 +152,7 @@ struct MenuBarPopoverView: View {
     private func popoverActionRow(
         label: String,
         systemImage: String,
+        shortcut: KeyEquivalent,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
@@ -154,6 +161,7 @@ struct MenuBarPopoverView: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.borderless)
+        .keyboardShortcut(shortcut, modifiers: .command)
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
     }

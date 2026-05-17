@@ -98,9 +98,12 @@ struct TunnelEditorView: View {
     @State private var draft: TunnelDraft
     @State private var isPickingIdentityFile = false
     @State private var pickedConfigAlias: String?
+    @State private var isTesting = false
+    @State private var testResult: TunnelTester.Result?
     private let isEditing: Bool
     private let configHosts: [SSHConfigHost]
     private let onSave: (Tunnel) -> Void
+    private let onTest: (Tunnel) async -> TunnelTester.Result
     private let onDelete: ((UUID) -> Void)?
 
     @Environment(\.dismiss) private var dismiss
@@ -109,6 +112,7 @@ struct TunnelEditorView: View {
         initial: Tunnel?,
         configHosts: [SSHConfigHost],
         onSave: @escaping (Tunnel) -> Void,
+        onTest: @escaping (Tunnel) async -> TunnelTester.Result,
         onDelete: ((UUID) -> Void)? = nil
     ) {
         if let initial {
@@ -120,6 +124,7 @@ struct TunnelEditorView: View {
         }
         self.configHosts = configHosts
         self.onSave = onSave
+        self.onTest = onTest
         self.onDelete = onDelete
     }
 
@@ -133,6 +138,17 @@ struct TunnelEditorView: View {
         if let port = host.port { draft.sshPortText = String(port) }
         if let identity = host.identityFile { draft.identityFile = identity }
         pickedConfigAlias = host.aliasOrPattern
+    }
+
+    private func feedbackLine(icon: String, text: String, color: Color) -> some View {
+        HStack {
+            Image(systemName: icon)
+            Text(text)
+        }
+        .font(.caption)
+        .foregroundStyle(color)
+        .padding(.horizontal, 16)
+        .padding(.bottom, 4)
     }
 
     var body: some View {
@@ -200,14 +216,21 @@ struct TunnelEditorView: View {
             .formStyle(.grouped)
 
             if let error = draft.validationError {
-                HStack {
-                    Image(systemName: "exclamationmark.triangle")
-                    Text(error)
+                feedbackLine(icon: "exclamationmark.triangle", text: error, color: .orange)
+            } else if isTesting {
+                HStack(spacing: 6) {
+                    ProgressView().controlSize(.small)
+                    Text("Test en cours…").font(.caption).foregroundStyle(.secondary)
                 }
-                .font(.caption)
-                .foregroundStyle(.orange)
                 .padding(.horizontal, 16)
                 .padding(.bottom, 4)
+            } else if let testResult {
+                switch testResult {
+                case .success:
+                    feedbackLine(icon: "checkmark.circle", text: "Connexion réussie.", color: .green)
+                case .failure(let message):
+                    feedbackLine(icon: "xmark.circle", text: message, color: .red)
+                }
             }
 
             HStack(spacing: 8) {
@@ -217,6 +240,17 @@ struct TunnelEditorView: View {
                         dismiss()
                     }
                 }
+                Button("Tester") {
+                    guard let tunnel = draft.build() else { return }
+                    isTesting = true
+                    testResult = nil
+                    Task {
+                        let result = await onTest(tunnel)
+                        isTesting = false
+                        testResult = result
+                    }
+                }
+                .disabled(draft.build() == nil || isTesting)
                 Spacer()
                 Button("Annuler") { dismiss() }
                     .keyboardShortcut(.cancelAction)
@@ -252,7 +286,8 @@ struct TunnelEditorView: View {
             SSHConfigHost(aliasOrPattern: "dgx", hostname: "dgx.haruni.net",
                           user: "sb", port: 2022, identityFile: "~/.ssh/id_ed25519")
         ],
-        onSave: { _ in }
+        onSave: { _ in },
+        onTest: { _ in .success }
     )
 }
 
@@ -262,6 +297,7 @@ struct TunnelEditorView: View {
                         sshUser: "sebastien", localPort: 5432, remoteHost: "db.internal", remotePort: 5432),
         configHosts: [],
         onSave: { _ in },
+        onTest: { _ in .failure("Permission denied (publickey).") },
         onDelete: { _ in }
     )
 }

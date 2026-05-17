@@ -8,10 +8,14 @@ final class TunnelsViewModel {
     private(set) var configHosts: [SSHConfigHost] = []
     private(set) var lastError: String?
 
+    /// Notifie le menubar de l'état agrégé (badge couleur).
+    var onStatusChange: ((MenuBarIconStatus) -> Void)?
+
     private let store: TunnelStore
     private let runner: TunnelRunner
     private let configParser: SSHConfigParser
     private let logStore: LogStore
+    private let tester = TunnelTester()
     nonisolated(unsafe) private var observationTask: Task<Void, Never>?
 
     init(
@@ -37,8 +41,25 @@ final class TunnelsViewModel {
             for await change in stream {
                 guard let self else { return }
                 self.states[change.id] = change.state
+                self.onStatusChange?(self.aggregateStatus)
             }
         }
+    }
+
+    var aggregateStatus: MenuBarIconStatus {
+        var hasRunning = false
+        var hasReconnecting = false
+        for state in states.values {
+            switch state {
+            case .failed:              return .failed
+            case .reconnecting:        hasReconnecting = true
+            case .running, .starting:  hasRunning = true
+            case .stopped:             break
+            }
+        }
+        if hasReconnecting { return .reconnecting }
+        if hasRunning { return .running }
+        return .neutral
     }
 
     func load() async {
@@ -73,6 +94,10 @@ final class TunnelsViewModel {
         } catch {
             lastError = "Suppression impossible : \(error)"
         }
+    }
+
+    func test(_ tunnel: Tunnel) async -> TunnelTester.Result {
+        await tester.test(tunnel)
     }
 
     func logLines(for id: UUID) async -> [String] {

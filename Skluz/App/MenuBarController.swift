@@ -29,21 +29,21 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
             self?.isSheetOpen = isOpen
         }
         popover.contentViewController = NSHostingController(rootView: root)
+
+        viewModel.onStatusChange = { [weak self] status in
+            self?.applyStatus(status)
+        }
     }
 
     private func configureButton() {
         guard let button = statusItem.button else { return }
-        if let image = NSImage(
-            systemSymbolName: "arrow.left.arrow.right.square",
-            accessibilityDescription: "Skluz"
-        ) {
-            image.isTemplate = true
-            button.image = image
-        } else {
-            button.title = "Skluz"
-        }
+        button.image = MenuBarIcon.image(status: .neutral)
         button.target = self
         button.action = #selector(togglePopover(_:))
+    }
+
+    private func applyStatus(_ status: MenuBarIconStatus) {
+        statusItem.button?.image = MenuBarIcon.image(status: status)
     }
 
     @objc private func togglePopover(_ sender: Any?) {

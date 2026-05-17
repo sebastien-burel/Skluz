@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## État du dépôt
 
-Projet en phase de **bootstrap** : aucun code n'existe encore, aucun commit n'a été fait. Le dépôt contient uniquement `PLAN_SKLUZ.md`, qui est le **document de référence** décrivant l'application à construire phase par phase.
+Les **10 phases** de `PLAN_SKLUZ.md` sont implémentées, plus la réadoption des tunnels orphelins (hors plan, décidée avec Sébastien). Le projet est fonctionnel ; reste à exécuter la signature/notarisation (cf. `NOTARIZATION.md`, action de Sébastien).
 
-**Avant toute action de codage, lire `PLAN_SKLUZ.md` en entier.** Il fait autorité sur l'architecture, les choix techniques, et le découpage en 10 phases. Si tu détectes une contradiction entre ce CLAUDE.md et le plan, le plan gagne (signale la contradiction à Sébastien).
+**`PLAN_SKLUZ.md` reste le document de référence** : il fait autorité sur l'architecture et les choix techniques. Si tu détectes une contradiction entre ce CLAUDE.md et le plan, le plan gagne (signale-la à Sébastien). Continuer à valider visuellement chaque changement notable avant de l'enchaîner.
 
 ## Ce que Skluz est
 
@@ -59,20 +59,28 @@ Au minimum un test unitaire sur **la construction des arguments SSH** dans `Tunn
 
 ## Commandes courantes
 
-Aucun projet Xcode n'existe encore (Phase 1 = créer le projet). Une fois `Skluz.xcodeproj` créé, les commandes typiques seront :
+Scheme : `Skluz`. Cibles de test : `SkluzTests` (unitaires, Swift Testing) ;
+`SkluzUITests` est du boilerplate neutralisé (app menu bar sans fenêtre).
 
 ```sh
-# Build (Phase 1+)
-xcodebuild -project Skluz.xcodeproj -scheme Skluz -configuration Debug build
+# Build Debug
+xcodebuild -project Skluz.xcodeproj -scheme Skluz -configuration Debug \
+  -destination 'platform=macOS' build
 
-# Tests
-xcodebuild -project Skluz.xcodeproj -scheme Skluz test
+# Toute la suite de tests
+xcodebuild -project Skluz.xcodeproj -scheme Skluz -destination 'platform=macOS' test
 
-# Test ciblé
-xcodebuild -project Skluz.xcodeproj -scheme Skluz test -only-testing:SkluzTests/TunnelRunnerTests/testSSHArgumentsForLocalForward
+# Test ciblé (Swift Testing : Suite/fonction)
+xcodebuild -project Skluz.xcodeproj -scheme Skluz -destination 'platform=macOS' \
+  test -only-testing:SkluzTests/SSHCommandBuilderTests/localForwardWithUserAndCustomSSHPort
+
+# Lancer l'app buildée (chemin DerivedData variable selon la machine)
+open -n "$(xcodebuild -project Skluz.xcodeproj -scheme Skluz -showBuildSettings \
+  2>/dev/null | awk -F' = ' '/ BUILT_PRODUCTS_DIR /{print $2}')/Skluz.app"
 ```
 
-Mettre à jour cette section après la Phase 1 avec les commandes effectives (scheme exact, éventuel `xcbeautify`, etc.).
+Régénérer l'AppIcon : `swift Tools/generate_appicon.swift`.
+Signature Developer ID + notarisation : voir `NOTARIZATION.md`.
 
 ## Langue
 
