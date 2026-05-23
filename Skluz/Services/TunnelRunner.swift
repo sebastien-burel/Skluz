@@ -358,7 +358,13 @@ actor TunnelRunner {
         let logStore = self.logStore
         pipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
             let data = handle.availableData
-            guard !data.isEmpty, let text = String(data: data, encoding: .utf8) else { return }
+            // EOF : sans cette garde, la dispatch source reste « lisible »
+            // après fermeture du pipe et le handler boucle à vide (~100 % CPU).
+            if data.isEmpty {
+                handle.readabilityHandler = nil
+                return
+            }
+            guard let text = String(data: data, encoding: .utf8) else { return }
             for raw in text.split(whereSeparator: { $0 == "\n" || $0 == "\r" }) {
                 let line = String(raw)
                 guard !line.isEmpty else { continue }
@@ -372,8 +378,13 @@ actor TunnelRunner {
 
     private func attachStdoutDrain(_ pipe: Pipe) {
         // ssh -N n'écrit pas sur stdout mais on draine pour éviter SIGPIPE.
+        // Même garde EOF que pour stderr : un pipe fermé reste signalé lisible
+        // indéfiniment, et `availableData` renvoie vide en boucle.
         pipe.fileHandleForReading.readabilityHandler = { handle in
-            _ = handle.availableData
+            let data = handle.availableData
+            if data.isEmpty {
+                handle.readabilityHandler = nil
+            }
         }
     }
 }
