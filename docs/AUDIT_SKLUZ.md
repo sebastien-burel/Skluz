@@ -81,8 +81,11 @@
     (tampon circulaire de 1000 lignes par tunnel).
 - **Reconnexion** : seulement si `autoRestart` et code de sortie ≠ 0. Le
   backoff suit une table fixe de 2, 5, 15, 30 et 60 s, sans jitter, et
-  **abandonne après 5 tentatives** (`.failed`). Il repart de zéro à chaque
-  succès.
+  **abandonne après 5 tentatives** (`.failed`). Le compteur repart de zéro
+  dès qu'un ssh est encore vivant après 500 ms. Un ssh qui échoue lentement
+  (serveur injoignable, clé refusée après l'échange) remet donc le compteur à
+  zéro à chaque essai, et la limite de 5 tentatives n'est en pratique jamais
+  atteinte : le tunnel réessaie indéfiniment toutes les 2 s.
 - **Pas de `NWPathMonitor`** : la perte du réseau n'est détectée que par
   `ServerAlive*` (≈ 90 s), puis passe par le backoff.
 - **Pas d'`os.Logger`** : les seuls logs sont le stderr de ssh en mémoire.
@@ -196,26 +199,42 @@ Points mineurs à intégrer en cours de route :
 - `SMAppService.daemon` est lié à l'emplacement de l'app : déplacer
   Skluz.app après l'enregistrement casse le daemon.
 
-## 9. Décisions à valider par Sébastien
+## 9. Décisions validées par Sébastien (2026-10-12)
 
-- **D1. Autorité des documents.** `PLAN_SKLUZD.md` fait autorité pour le mode
-  Système ; `PLAN_SKLUZ.md` reste la référence du mode Session. `CLAUDE.md`
-  sera amendé avec des invariants séparés Session / Système.
-- **D2. Modèle et builder.** Un modèle unique `TunnelConfig` avec un champ
-  `mode`, qui **garde** les champs Session (`type`, `proxyJump`, `extraArgs`,
-  `autoRestart`, `identityFile`) et ajoute `localBindAddress` et `keyRef`.
-  `SSHCommandBuilder` applique deux politiques :
-  - Session : comportement actuel, plus la validation host, user et ports
-    (sans effet sur des configs saines) ;
-  - Système : liste blanche stricte du plan, avec `type == .localForward`
-    obligatoire, sans `proxyJump` ni `extraArgs`.
+Toutes intégrées à [`PLAN_SKLUZD.md`](PLAN_SKLUZD.md) et à `CLAUDE.md`.
 
-  Le JSON utilisateur passe en `version: 2` avec migration automatique depuis
-  la v1.
-- **D3. Backoff par mode.** Session : inchangé (2 → 60 s, 5 tentatives).
-  Système : 1 → 60 s exponentiel + jitter, illimité.
-- **D4.** Intégrer les corrections 1 à 5 de la §8 dans `PLAN_SKLUZD.md`.
-- **D5. Bug `autoStart`.** Le corriger maintenant, dans un commit séparé
-  avant la phase 1, ou l'intégrer à la phase 1.
-- **D6. Prérequis Mac mini.** Skluz installé dans `/Applications` avant
-  l'activation du service système.
+- **D1. Autorité des documents** — validée. `PLAN_SKLUZD.md` fait autorité
+  pour le mode Système ; `PLAN_SKLUZ.md` reste la référence du mode Session.
+  Les invariants de `CLAUDE.md` sont répartis en trois blocs : Commun /
+  Session / Système. Le stockage de clés sans passphrase par le daemon est un
+  compromis assumé, compensé par les droits root et la restriction
+  `authorized_keys`.
+- **D2. Modèle et builder** — validée. Modèle unique `TunnelConfig` avec
+  `mode` ; il garde les champs Session (`type`, `proxyJump`, `extraArgs`,
+  `autoStart`, `autoRestart`) et ajoute `localBindAddress` et `keyRef`
+  (enum `.path` / `.managed`). `sshHost`/`sshUser`/`sshPort` deviennent
+  `host`/`user`/`port`. Validation commune, puis deux politiques :
+  - Session : arguments identiques à aujourd'hui ; `localBindAddress` vide
+    garde l'écoute IPv4 + IPv6 ;
+  - Système : liste blanche, `user` obligatoire (sinon `root`), `-L`
+    uniquement.
+
+  Une source de vérité par mode. Migration `tunnels.json` v1 → v2 avec
+  sauvegarde `tunnels.v1.json` ; Skluz 1.0 ne relit pas un fichier v2.
+- **D3. Reconnexion** — validée.
+  - Système : exponentiel 1 → 60 s, jitter ±20 %, jamais d'abandon, et
+    `NWPathMonitor` (relance immédiate au retour du réseau, redémarrage sur
+    changement d'interface, anti-rebond 2 s).
+  - Session : table 2/5/15/30/60 s et 5 tentatives inchangées.
+  - Dans les deux modes, le compteur n'est remis à zéro qu'après 30 s
+    stables. Aujourd'hui, la remise à zéro à 500 ms fait réessayer
+    indéfiniment toutes les 2 s un ssh qui échoue lentement.
+- **D4. Corrections du plan** — validées toutes les quatre : requirement XPC
+  parenthésée (§8.1), pas de boucle launchd (§8.2), création des fichiers au
+  premier démarrage et refus des liens symboliques (§8.3), mutations
+  réservées au groupe `admin` (§8.4). La §8.5 est couverte par D3.
+- **D5. Bug `autoStart`** — corrigé tout de suite, dans un commit séparé
+  avant la phase 1.
+- **D6. Prérequis Mac mini** — validée. `DaemonManager` refuse l'activation
+  hors de `/Applications/Skluz.app`. L'approbation initiale exige une session
+  graphique unique (VNC). Le compte qui pilote Skluz doit être admin.

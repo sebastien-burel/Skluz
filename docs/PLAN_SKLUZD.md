@@ -33,10 +33,17 @@ Skluz.app/
 ## Contraintes de sécurité (non négociables)
 
 1. Le daemon tourne en **root** et lance `/usr/bin/ssh`. Toute option `ssh` arbitraire venue de l'IPC permettrait d'exécuter du code en root. Les options `ProxyCommand`, `LocalCommand`, `PermitLocalCommand`, `KnownHostsCommand`, `Match exec` et `-o` libres sont donc **interdites**. La commande est construite uniquement à partir des champs typés de `TunnelConfig`.
-2. Le daemon n'accepte que les clients XPC signés par l'équipe `82FW35VV68` avec un bundle ID `net.haruni.skluz*` (`setCodeSigningRequirement`).
-3. Chaque `ssh` est lancé avec : `-N -T -F /dev/null -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=/Library/Application Support/Skluz/known_hosts -o ExitOnForwardFailure=yes -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -o IdentitiesOnly=yes -i <clé dédiée>`.
+2. Le daemon n'accepte que les clients XPC signés par l'équipe `82FW35VV68` avec l'identifiant `net.haruni.skluz` ou `net.haruni.skluz.cli` (`setCodeSigningRequirement`, requirement exacte en phase 4 : les identifiants sont **entre parenthèses**, cf. audit §8.1).
+3. Chaque `ssh` est lancé avec : `-N -T -F /dev/null -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=/Library/Application Support/Skluz/known_hosts -o GlobalKnownHostsFile=/dev/null -o ExitOnForwardFailure=yes -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -o IdentitiesOnly=yes -i <clé dédiée>`. `user` est obligatoire : sans config ssh, ssh utiliserait `root`.
 4. Les clés du daemon **n'ont pas de passphrase**, puisque le trousseau de session est verrouillé avant connexion. En compensation, elles sont dédiées aux tunnels et restreintes côté serveur (voir phase 5).
 5. Les ports d'écoute locaux sont liés à `127.0.0.1` par défaut. L'écoute sur une autre interface exige un champ explicite dans la config.
+6. Les appels XPC qui modifient l'état (`upsertTunnel`, `deleteTunnel`, `setEnabled`, `generateKey`, `importKey`, `trustHostKey`) sont réservés aux utilisateurs du groupe `admin` (`effectiveUserIdentifier` de la connexion). La lecture reste ouverte.
+7. Le daemon refuse tout élément de `/Library/Application Support/Skluz/` qui n'appartient pas à root, a des droits trop larges ou est un lien symbolique (`lstat`).
+
+> **Décisions validées par Sébastien le 2026-10-12** (D1 à D6, détail dans
+> [`AUDIT_SKLUZ.md`](AUDIT_SKLUZ.md) §9) : elles sont intégrées ci-dessous.
+> Ce plan fait autorité pour le mode Système ; `PLAN_SKLUZ.md` reste la
+> référence du mode Session.
 
 ---
 
@@ -61,14 +68,26 @@ Skluz.app/
 
 **Tâches**
 - Créer le package local `SkluzCore` avec :
-  - `TunnelConfig : Codable, Sendable, Identifiable`, comprenant : `id`, `name`, `host`, `port`, `user`, `localBindAddress` (défaut `127.0.0.1`), `localPort`, `remoteHost`, `remotePort`, `keyRef`, `mode` (`.session` / `.system`) et `enabled` ;
-  - `SSHCommandBuilder`, qui produit `[String]` à partir d'un `TunnelConfig` en appliquant strictement les contraintes de sécurité ci-dessus. Il valide host et user (regex), les ports (1–65535) et rejette les caractères de contrôle et tout champ commençant par `-` ;
-  - `TunnelSupervisor` (actor), qui gère le lancement, la surveillance du processus, la reconnexion avec backoff exponentiel (1 s → 60 s max, avec jitter) et la relance sur changement réseau via `NWPathMonitor`. Il expose un `AsyncStream<TunnelState>`.
-- Faire migrer l'app vers SkluzCore **sans changement de comportement visible**.
+  - `TunnelConfig : Codable, Sendable, Identifiable` (D2), modèle unique pour les deux modes :
+    - communs : `id`, `name`, `mode` (`.session` / `.system`), `enabled`, `type`, `host`, `port?`, `user?`, `localBindAddress?`, `localPort`, `remoteHost?`, `remotePort?`, `keyRef?` (enum `.path(String)` / `.managed(name)`) ;
+    - réservés au mode Session : `proxyJump`, `extraArgs`, `autoStart`, `autoRestart` ;
+    - `host`/`user`/`port` remplacent `sshHost`/`sshUser`/`sshPort` ;
+  - `SSHCommandBuilder` (`throws`) : validation commune aux deux modes (host et remoteHost `[A-Za-z0-9._:-]`, user `[A-Za-z0-9._-]`, sans `-` initial ; ports 1–65535 ; aucun caractère de contrôle, `name` compris), puis deux politiques :
+    - **Session** : arguments identiques à aujourd'hui (mêmes options, même ordre, `extraArgs` en dernier) ; `localBindAddress` vide = pas d'adresse dans `-L` ;
+    - **Système** : liste blanche des contraintes ci-dessus ; `type == .localForward`, `user` et `keyRef = .managed` obligatoires ; `proxyJump`/`extraArgs` non vides refusés ; bind `127.0.0.1` par défaut ; nom de clé `[A-Za-z0-9_-]` ;
+  - `TunnelSupervisor` (actor) avec une politique de relance par mode (D3) :
+    - **Session** : si `autoRestart`, délais 2/5/15/30/60 s, abandon après 5 échecs ;
+    - **Système** : toujours, exponentiel 1 → 60 s, jitter ±20 %, jamais d'abandon ; `NWPathMonitor` (anti-rebond 2 s) : relance immédiate et remise à zéro au retour du réseau, redémarrage des tunnels actifs sur changement d'interface ;
+    - dans les deux modes, le compteur d'échecs n'est remis à zéro qu'après **30 s** de fonctionnement stable (au lieu de 500 ms aujourd'hui, ce qui empêchait d'atteindre la limite de 5) ;
+    - horloge et aléa injectables pour les tests ; expose un `AsyncStream<TunnelState>`.
+- Migration du `tunnels.json` utilisateur v1 → v2 au chargement (`mode = .session`, `identityFile` → `.path`), avec une copie `tunnels.v1.json` avant la première réécriture.
+- Faire migrer l'app vers SkluzCore **sans changement de comportement visible**, hors remise à zéro du compteur après 30 s (validée).
 
 **PASS**
-- Tests unitaires `SSHCommandBuilder` : cas nominal, et rejet de `host = "-oProxyCommand=…"`, `user` contenant `;` ou un saut de ligne, port 0 ou 70000, et bind sur `0.0.0.0` sans opt-in.
-- Tests `TunnelSupervisor` avec un faux `ssh` (script qui se termine) : la relance suit le backoff attendu.
+- Les tests existants de `SSHCommandBuilderTests` passent avec les mêmes tableaux d'arguments attendus (seuls les noms de champs changent).
+- Tests unitaires `SSHCommandBuilder` : cas nominal Système, et rejet de `host = "-oProxyCommand=…"`, `user` contenant `;` ou un saut de ligne, port 0 ou 70000, bind sur `0.0.0.0` sans opt-in, `extraArgs` ou `proxyJump` en Système, Système sans `user`.
+- Tests `TunnelSupervisor` avec un faux `ssh` (script qui se termine) : la relance suit le backoff attendu dans chaque mode, et le compteur ne repart à zéro qu'après 30 s stables.
+- Test de migration : un fichier v1 est relu à l'identique en v2, et la sauvegarde v1 existe.
 - L'app existante ouvre ses tunnels comme avant (test manuel : `lsof -nP -iTCP -sTCP:LISTEN | grep ssh`).
 
 **FAIL** : un test échoue, ou une régression apparaît dans l'app.
@@ -77,7 +96,8 @@ Skluz.app/
 
 **Tâches**
 - Nouveau target exécutable `skluzd` (hardened runtime, signé Team `82FW35VV68`), lié à SkluzCore.
-- Il lit `/Library/Application Support/Skluz/tunnels.json` et refuse de démarrer si le fichier ou le dossier `keys/` n'appartient pas à root ou est lisible par d'autres utilisateurs.
+- Au démarrage, il crée les éléments absents : `/Library/Application Support/Skluz/` (`755`), `keys/` (`700`), `tunnels.json` vide `{ "version": 2, "tunnels": [] }` (`600`) et `known_hosts` vide (`644`), tous `root:wheel`.
+- Il lit `/Library/Application Support/Skluz/tunnels.json`. Si un élément existant n'appartient pas à root, a des droits trop larges ou est un lien symbolique, il **reste vivant** (pas de boucle de relance launchd) mais ne lance aucun tunnel, journalise l'erreur une fois, et l'expose (avec la commande de correction) via `status()` en phase 4. Il ne corrige jamais les permissions lui-même.
 - Il supervise tous les tunnels `mode == .system && enabled`.
 - Il gère `SIGTERM` proprement (ferme les `ssh` enfants, sans processus orphelin) et recharge la config sur `SIGHUP`.
 - Il écrit ses logs via `os.Logger` (subsystem `net.haruni.skluzd`, catégories `supervisor`, `xpc`, `config`).
@@ -87,7 +107,8 @@ Skluz.app/
 - Après `sudo kill <pid ssh>`, le tunnel revient en moins de 15 s.
 - En coupant puis rétablissant le Wi-Fi ou Ethernet, le tunnel revient en moins de 30 s après le retour réseau.
 - Après `SIGTERM`, `pgrep -f "ssh .*-N"` ne renvoie plus rien.
-- Si `tunnels.json` est en `644`, le daemon refuse de démarrer avec un message explicite dans `log show`.
+- Au premier lancement sur une machine vierge, le dossier et les fichiers sont créés avec les droits attendus.
+- Si `tunnels.json` est en `644` (ou est un lien symbolique), le daemon reste vivant, ne lance aucun tunnel et affiche un message explicite dans `log show`.
 
 **FAIL** : un seul de ces points n'est pas vérifié.
 
@@ -103,8 +124,11 @@ Skluz.app/
   - `AssociatedBundleIdentifiers` = `[net.haruni.skluz]`.
 - Phases de build Copy Files : `skluzd` vers `Contents/MacOS`, le plist vers `Contents/Library/LaunchDaemons`.
 - Dans l'app, ajouter un service `DaemonManager` qui gère `SMAppService.daemon(plistName:)` : `register()`, `unregister()` et la lecture du `status`. Quand le statut vaut `.requiresApproval`, il appelle `SMAppService.openSystemSettingsLoginItems()` et affiche une explication à l'utilisateur.
+- `DaemonManager` refuse `register()` si l'app ne tourne pas depuis `/Applications/Skluz.app` (D6 : DMG monté, Téléchargements, App Translocation ou `~/Applications`), avec le message « Déplacez Skluz dans le dossier Applications, puis relancez-le. »
+- L'approbation dans Réglages Système exige une session graphique **une seule fois**, à l'installation (VNC sur le Mac mini) ; ensuite plus aucune session n'est nécessaire.
 
 **PASS**
+- Lancée hors de `/Applications`, l'app refuse l'activation avec le message ci-dessus.
 - Après enregistrement et approbation, `sudo launchctl print system/net.haruni.skluzd` affiche `state = running`.
 - Après `sudo kill -9 <pid skluzd>`, launchd relance le daemon en moins de 10 s et les tunnels reviennent.
 - `sudo sfltool dumpbtm` liste `skluzd` comme élément d'arrière-plan approuvé, rattaché à Skluz.
@@ -120,11 +144,14 @@ Skluz.app/
   - `upsertTunnel(_:)`, `deleteTunnel(id:)`, `setEnabled(id:, _:)` ;
   - `generateKey(name:) -> publicKey`, `importKey(name:, privateKey:)` ;
   - `fetchHostKey(host:, port:) -> fingerprints` et `trustHostKey(host:, port:, key:)`.
-- Côté daemon, exiger une signature de code : `connection.setCodeSigningRequirement("anchor apple generic and certificate leaf[subject.OU] = \"82FW35VV68\" and identifier \"net.haruni.skluz\" or identifier \"net.haruni.skluz.cli\"")`. Adapter la requirement à l'identifiant réel de la CLI.
-- Toute écriture de config passe par `SSHCommandBuilder` pour validation **avant** d'être persistée, puis le fichier est écrit de façon atomique.
+- Côté daemon, exiger une signature de code : `connection.setCodeSigningRequirement("anchor apple generic and certificate leaf[subject.OU] = \"82FW35VV68\" and (identifier \"net.haruni.skluz\" or identifier \"net.haruni.skluz.cli\")")`. Les **parenthèses sont obligatoires** : `and` est prioritaire sur `or`, et sans elles tout binaire ad hoc déclarant `net.haruni.skluz.cli` serait accepté. Les builds Debug passent aussi (le certificat Apple Development porte `OU=82FW35VV68`).
+- Les appels de mutation vérifient que `effectiveUserIdentifier` appartient au groupe `admin` ; `version`, `status`, `listTunnels` et `fetchHostKey` restent ouverts.
+- `status()` expose aussi l'erreur de configuration globale du daemon (cf. phase 2).
+- Toute écriture de config passe par `SSHCommandBuilder` pour validation **avant** d'être persistée, puis le fichier est écrit de façon atomique. `fetchHostKey` applique la même validation host/port avant `ssh-keyscan`.
 
 **PASS**
-- Un client XPC de test non signé, ou signé ad hoc, est rejeté.
+- Un client XPC de test non signé, ou signé ad hoc, est rejeté — y compris un client ad hoc signé avec `-i net.haruni.skluz.cli`.
+- Un appel de mutation depuis un compte non admin est refusé ; `status()` fonctionne depuis ce compte.
 - `upsertTunnel` avec `host = "-oProxyCommand=touch /tmp/pwn"` est refusé, et `/tmp/pwn` n'existe pas.
 - Un `upsertTunnel` valide fait apparaître le tunnel sans redémarrer le daemon.
 - `tunnels.json` reste `root:wheel 600` après toutes les opérations.
@@ -176,7 +203,7 @@ Skluz.app/
 **Tâches**
 - Mise à jour : au lancement, l'app compare `version()` du daemon à sa propre version. En cas d'écart, elle fait `unregister()` puis `register()`, ou demande au daemon de se terminer pour que launchd relance le nouveau binaire.
 - Désinstallation : un bouton « Supprimer le service système » fait `unregister()`. Une option supprime aussi `/Library/Application Support/Skluz/` après confirmation.
-- Ajouter à `docs/` une page `SKLUZD.md` : fonctionnement, emplacements des fichiers, commandes de diagnostic (`skluz status`, `sudo launchctl print system/net.haruni.skluzd`, `log show --last boot --predicate 'subsystem == "net.haruni.skluzd"'`).
+- Ajouter à `docs/` une page `SKLUZD.md` : fonctionnement, prérequis d'installation (Skluz dans `/Applications`, compte admin, une session VNC unique pour l'approbation initiale, déverrouillage FileVault par SSH), emplacements des fichiers, commandes de diagnostic (`skluz status`, `sudo launchctl print system/net.haruni.skluzd`, `log show --last boot --predicate 'subsystem == "net.haruni.skluzd"'`).
 
 **PASS — test de référence sur le Mac mini**
 1. FileVault actif, au moins 2 tunnels en mode Système.
