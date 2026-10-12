@@ -7,6 +7,20 @@ Réglages projet déjà en place : `CODE_SIGN_STYLE = Automatic`,
 `DEVELOPMENT_TEAM = 82FW35VV68`, `ENABLE_HARDENED_RUNTIME = YES`,
 `ENABLE_APP_SANDBOX = NO`. Distribution **hors App Store** (Developer ID).
 
+## Raccourci : `Tools/release.sh`
+
+Une fois les prérequis (§0) en place, le script enchaîne les étapes 1 à 6
+et produit un DMG signé, notarisé et agrafé dans `build/release/` :
+
+```sh
+Tools/release.sh                   # pipeline complet → build/release/Skluz-<version>.dmg
+Tools/release.sh --skip-notarize   # build + signature seulement
+Tools/release.sh --from-export     # reprendre sur l'app déjà exportée
+```
+
+Le numéro de build vaut par défaut le nombre de commits (`BUILD=…` pour
+le forcer) ; la version vient de `MARKETING_VERSION`.
+
 ## 0. Prérequis (une fois)
 
 - Certificat **« Developer ID Application »** de Haruni installé dans le trousseau
@@ -18,7 +32,7 @@ Réglages projet déjà en place : `CODE_SIGN_STYLE = Automatic`,
 - Stocker une fois pour toutes dans le trousseau :
   ```sh
   xcrun notarytool store-credentials "skluz-notary" \
-    --apple-id "holding.laduche@burel.net" \
+    --apple-id "sebastien@burel.net" \
     --team-id 82FW35VV68 \
     --password "<mot-de-passe-application>"
   ```

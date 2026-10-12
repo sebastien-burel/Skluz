@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## État du dépôt
 
-Les **10 phases** de `PLAN_SKLUZ.md` sont implémentées, plus la réadoption des tunnels orphelins (hors plan, décidée avec Sébastien). Le projet est fonctionnel ; reste à exécuter la signature/notarisation (cf. `NOTARIZATION.md`, action de Sébastien).
+Les **10 phases** de `PLAN_SKLUZ.md` sont implémentées, plus la réadoption des tunnels orphelins (hors plan, décidée avec Sébastien). Le projet est fonctionnel ; la v1.0 est signée, notarisée et validée sur une autre machine (DMG produit par `Tools/release.sh`, cf. `NOTARIZATION.md`).
 
 **`PLAN_SKLUZ.md` reste le document de référence** : il fait autorité sur l'architecture et les choix techniques. Si tu détectes une contradiction entre ce CLAUDE.md et le plan, le plan gagne (signale-la à Sébastien). Continuer à valider visuellement chaque changement notable avant de l'enchaîner.
 
