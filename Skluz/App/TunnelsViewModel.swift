@@ -71,6 +71,7 @@ final class TunnelsViewModel {
             lastError = "Chargement impossible : \(error)"
         }
         await runner.adoptOrphans(among: tunnels)
+        await runner.startAutoStartTunnels(among: tunnels)
         configHosts = await configParser.loadHosts()
     }
 

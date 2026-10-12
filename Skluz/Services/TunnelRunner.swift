@@ -167,6 +167,20 @@ actor TunnelRunner {
         writeRegistry()
     }
 
+    /// À appeler au démarrage, après `adoptOrphans` : lance les tunnels marqués
+    /// « Démarrer au lancement » qui ne tournent pas déjà.
+    func startAutoStartTunnels(among tunnels: [Tunnel]) {
+        for tunnel in Self.autoStartCandidates(among: tunnels, alreadyRunning: Set(running.keys)) {
+            start(tunnel)
+        }
+    }
+
+    /// Tunnels à démarrer au lancement : `autoStart` et activés, en excluant
+    /// ceux déjà actifs (un orphelin réadopté occupe déjà son port local).
+    static func autoStartCandidates(among tunnels: [Tunnel], alreadyRunning: Set<UUID>) -> [Tunnel] {
+        tunnels.filter { $0.autoStart && $0.enabled && !alreadyRunning.contains($0.id) }
+    }
+
     // MARK: - Process lifecycle
 
     private func spawn(_ tunnel: Tunnel) {
