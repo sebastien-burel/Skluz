@@ -1,7 +1,8 @@
 import SwiftUI
+import SkluzCore
 
 struct TunnelRowView: View {
-    let tunnel: Tunnel
+    let tunnel: TunnelConfig
     let state: TunnelState
     let onEdit: () -> Void
     let onToggle: () -> Void
@@ -79,7 +80,7 @@ struct TunnelRowView: View {
     }
 
     private var subtitle: String {
-        let host = tunnel.sshUser.map { "\($0)@\(tunnel.sshHost)" } ?? tunnel.sshHost
+        let host = tunnel.user.map { "\($0)@\(tunnel.host)" } ?? tunnel.host
         switch tunnel.type {
         case .localForward:
             return "-L \(tunnel.localPort):\(tunnel.remoteHost ?? "?"):\(tunnel.remotePort ?? 0)  •  \(host)"

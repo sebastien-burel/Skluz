@@ -1,10 +1,11 @@
 import AppKit
+import SkluzCore
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let tunnelStore = TunnelStore()
     private let logStore = LogStore()
     private let configParser = SSHConfigParser()
-    private lazy var runner = TunnelRunner(logStore: logStore)
+    private lazy var runner = TunnelSupervisor(logStore: logStore, pidStore: RuntimePIDStore())
     private lazy var viewModel = TunnelsViewModel(
         store: tunnelStore,
         runner: runner,

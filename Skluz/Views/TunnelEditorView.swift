@@ -1,5 +1,6 @@
 import SwiftUI
 import UniformTypeIdentifiers
+import SkluzCore
 
 struct TunnelDraft {
     var id: UUID = UUID()
@@ -17,17 +18,27 @@ struct TunnelDraft {
     var autoStart: Bool = false
     var autoRestart: Bool = false
     var enabled: Bool = true
+    // Not editable yet (System mode UI comes with PLAN_SKLUZD phase 6), but
+    // kept so that editing a tunnel never drops them.
+    var mode: TunnelMode = .session
+    var managedKey: String?
+    var localBindAddress: String?
+    var exposesOnNetwork: Bool = false
 
     init() {}
 
-    init(from tunnel: Tunnel) {
+    init(from tunnel: TunnelConfig) {
         self.id = tunnel.id
         self.name = tunnel.name
         self.type = tunnel.type
-        self.sshHost = tunnel.sshHost
-        self.sshUser = tunnel.sshUser ?? ""
-        self.sshPortText = tunnel.sshPort.map(String.init) ?? ""
-        self.identityFile = tunnel.identityFile ?? ""
+        self.sshHost = tunnel.host
+        self.sshUser = tunnel.user ?? ""
+        self.sshPortText = tunnel.port.map(String.init) ?? ""
+        switch tunnel.keyRef {
+        case .path(let path):    self.identityFile = path
+        case .managed(let name): self.managedKey = name
+        case nil:                break
+        }
         self.localPortText = String(tunnel.localPort)
         self.remoteHost = tunnel.remoteHost ?? ""
         self.remotePortText = tunnel.remotePort.map(String.init) ?? ""
@@ -36,6 +47,9 @@ struct TunnelDraft {
         self.autoStart = tunnel.autoStart
         self.autoRestart = tunnel.autoRestart
         self.enabled = tunnel.enabled
+        self.mode = tunnel.mode
+        self.localBindAddress = tunnel.localBindAddress
+        self.exposesOnNetwork = tunnel.exposesOnNetwork
     }
 
     var validationError: String? {
@@ -55,24 +69,38 @@ struct TunnelDraft {
                 return "Port distant invalide (1 à 65535)."
             }
         }
+        if let tunnel = assemble() {
+            do {
+                try SSHCommandBuilder.validate(tunnel)
+            } catch {
+                return error.localizedDescription
+            }
+        }
         return nil
     }
 
-    func build() -> Tunnel? {
-        guard validationError == nil, let localPort = Int(localPortText) else { return nil }
+    func build() -> TunnelConfig? {
+        validationError == nil ? assemble() : nil
+    }
+
+    private func assemble() -> TunnelConfig? {
+        guard let localPort = Int(localPortText) else { return nil }
         let sshPort = Int(sshPortText)
         let remotePort = type != .dynamic ? Int(remotePortText) : nil
         let extras = extraArgsText
             .split(whereSeparator: { $0.isWhitespace })
             .map(String.init)
-        return Tunnel(
+        return TunnelConfig(
             id: id,
             name: trimmed(name),
+            mode: mode,
             type: type,
-            sshHost: trimmed(sshHost),
-            sshUser: optional(sshUser),
-            sshPort: sshPort,
-            identityFile: optional(identityFile),
+            host: trimmed(sshHost),
+            user: optional(sshUser),
+            port: sshPort,
+            keyRef: managedKey.map(KeyRef.managed) ?? optional(identityFile).map(KeyRef.path),
+            localBindAddress: localBindAddress,
+            exposesOnNetwork: exposesOnNetwork,
             localPort: localPort,
             remoteHost: type != .dynamic ? optional(remoteHost) : nil,
             remotePort: remotePort,
@@ -102,17 +130,17 @@ struct TunnelEditorView: View {
     @State private var testResult: TunnelTester.Result?
     private let isEditing: Bool
     private let configHosts: [SSHConfigHost]
-    private let onSave: (Tunnel) -> Void
-    private let onTest: (Tunnel) async -> TunnelTester.Result
+    private let onSave: (TunnelConfig) -> Void
+    private let onTest: (TunnelConfig) async -> TunnelTester.Result
     private let onDelete: ((UUID) -> Void)?
 
     @Environment(\.dismiss) private var dismiss
 
     init(
-        initial: Tunnel?,
+        initial: TunnelConfig?,
         configHosts: [SSHConfigHost],
-        onSave: @escaping (Tunnel) -> Void,
-        onTest: @escaping (Tunnel) async -> TunnelTester.Result,
+        onSave: @escaping (TunnelConfig) -> Void,
+        onTest: @escaping (TunnelConfig) async -> TunnelTester.Result,
         onDelete: ((UUID) -> Void)? = nil
     ) {
         if let initial {
@@ -293,8 +321,8 @@ struct TunnelEditorView: View {
 
 #Preview("Édition") {
     TunnelEditorView(
-        initial: Tunnel(name: "prod-postgres", type: .localForward, sshHost: "bastion.example.com",
-                        sshUser: "sebastien", localPort: 5432, remoteHost: "db.internal", remotePort: 5432),
+        initial: TunnelConfig(name: "prod-postgres", type: .localForward, host: "bastion.example.com",
+                              user: "sebastien", localPort: 5432, remoteHost: "db.internal", remotePort: 5432),
         configHosts: [],
         onSave: { _ in },
         onTest: { _ in .failure("Permission denied (publickey).") },

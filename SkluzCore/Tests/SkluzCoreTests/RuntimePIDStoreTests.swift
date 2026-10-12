@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import Skluz
+@testable import SkluzCore
 
 struct RuntimePIDStoreTests {
 

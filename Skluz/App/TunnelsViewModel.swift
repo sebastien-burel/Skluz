@@ -1,9 +1,10 @@
 import Foundation
 import Observation
+import SkluzCore
 
 @Observable
 final class TunnelsViewModel {
-    private(set) var tunnels: [Tunnel] = []
+    private(set) var tunnels: [TunnelConfig] = []
     private(set) var states: [UUID: TunnelState] = [:]
     private(set) var configHosts: [SSHConfigHost] = []
     private(set) var lastError: String?
@@ -12,7 +13,7 @@ final class TunnelsViewModel {
     var onStatusChange: ((MenuBarIconStatus) -> Void)?
 
     private let store: TunnelStore
-    private let runner: TunnelRunner
+    private let runner: TunnelSupervisor
     private let configParser: SSHConfigParser
     private let logStore: LogStore
     private let tester = TunnelTester()
@@ -20,7 +21,7 @@ final class TunnelsViewModel {
 
     init(
         store: TunnelStore,
-        runner: TunnelRunner,
+        runner: TunnelSupervisor,
         configParser: SSHConfigParser,
         logStore: LogStore
     ) {
@@ -75,7 +76,7 @@ final class TunnelsViewModel {
         configHosts = await configParser.loadHosts()
     }
 
-    func upsert(_ tunnel: Tunnel) async {
+    func upsert(_ tunnel: TunnelConfig) async {
         do {
             try await store.upsert(tunnel)
             tunnels = await store.tunnels
@@ -97,7 +98,7 @@ final class TunnelsViewModel {
         }
     }
 
-    func test(_ tunnel: Tunnel) async -> TunnelTester.Result {
+    func test(_ tunnel: TunnelConfig) async -> TunnelTester.Result {
         await tester.test(tunnel)
     }
 
@@ -109,7 +110,7 @@ final class TunnelsViewModel {
         await logStore.clear(id)
     }
 
-    func startTunnel(_ tunnel: Tunnel) {
+    func startTunnel(_ tunnel: TunnelConfig) {
         Task { [runner] in await runner.start(tunnel) }
     }
 

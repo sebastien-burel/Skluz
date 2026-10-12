@@ -1,4 +1,5 @@
 import SwiftUI
+import SkluzCore
 
 struct MenuBarPopoverView: View {
     let viewModel: TunnelsViewModel
@@ -7,8 +8,8 @@ struct MenuBarPopoverView: View {
 
     enum ActiveSheet: Identifiable {
         case create
-        case edit(Tunnel)
-        case logs(Tunnel)
+        case edit(TunnelConfig)
+        case logs(TunnelConfig)
         case preferences
 
         var id: String {
@@ -140,7 +141,7 @@ struct MenuBarPopoverView: View {
         }
     }
 
-    private func toggle(tunnel: Tunnel, state: TunnelState) {
+    private func toggle(tunnel: TunnelConfig, state: TunnelState) {
         switch state {
         case .running, .starting, .reconnecting:
             viewModel.stopTunnel(id: tunnel.id)

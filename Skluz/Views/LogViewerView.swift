@@ -1,8 +1,9 @@
 import SwiftUI
 import AppKit
+import SkluzCore
 
 struct LogViewerView: View {
-    let tunnel: Tunnel
+    let tunnel: TunnelConfig
     let viewModel: TunnelsViewModel
 
     @State private var lines: [String] = []
@@ -107,11 +108,11 @@ struct LogViewerView: View {
 
 #Preview {
     LogViewerView(
-        tunnel: Tunnel(name: "ComfyUI", type: .localForward, sshHost: "dgx.haruni.net",
-                       localPort: 8188, remoteHost: "localhost", remotePort: 8188),
+        tunnel: TunnelConfig(name: "ComfyUI", type: .localForward, host: "dgx.haruni.net",
+                             localPort: 8188, remoteHost: "localhost", remotePort: 8188),
         viewModel: TunnelsViewModel(
             store: TunnelStore(),
-            runner: TunnelRunner(logStore: LogStore()),
+            runner: TunnelSupervisor(logStore: LogStore()),
             configParser: SSHConfigParser(),
             logStore: LogStore()
         )

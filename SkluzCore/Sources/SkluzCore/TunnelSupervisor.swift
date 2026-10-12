@@ -1,7 +1,48 @@
 import Foundation
 import Darwin
 
-actor TunnelRunner {
+/// Runs and watches the ssh processes of tunnels: start/stop, stderr capture,
+/// restart per `RestartPolicy`, reaction to network changes (System mode).
+public actor TunnelSupervisor {
+    /// Side effects the supervisor depends on, injectable for tests.
+    public struct Environment: Sendable {
+        /// Always `/usr/bin/ssh` in production (`.live`). Overridden only by
+        /// tests, which run a fake ssh script.
+        public var sshExecutable: URL
+        public var systemPaths: SystemPaths
+        public var now: @Sendable () -> Date
+        public var sleep: @Sendable (Duration) async throws -> Void
+        /// Uniform value in `0..<1`, used for the System-mode jitter.
+        public var random: @Sendable () -> Double
+
+        public init(
+            sshExecutable: URL,
+            systemPaths: SystemPaths,
+            now: @escaping @Sendable () -> Date,
+            sleep: @escaping @Sendable (Duration) async throws -> Void,
+            random: @escaping @Sendable () -> Double
+        ) {
+            self.sshExecutable = sshExecutable
+            self.systemPaths = systemPaths
+            self.now = now
+            self.sleep = sleep
+            self.random = random
+        }
+
+        public static let live = Environment(
+            sshExecutable: URL(fileURLWithPath: SSHCommandBuilder.sshPath),
+            systemPaths: .standard,
+            now: { Date() },
+            sleep: { try await Task.sleep(for: $0) },
+            random: { Double.random(in: 0..<1) }
+        )
+    }
+
+    public struct StateChange: Sendable {
+        public let id: UUID
+        public let state: TunnelState
+    }
+
     /// Un tunnel actif : soit un process que nous avons lancé (`process != nil`),
     /// soit un process ssh adopté après un crash de Skluz (`process == nil`,
     /// surveillé par polling via `monitor`).
@@ -10,39 +51,32 @@ actor TunnelRunner {
         let process: Process?
         let stderrPipe: Pipe?
         let stdoutPipe: Pipe?
+        let startedAt: Date
         var monitor: Task<Void, Never>?
     }
 
-    /// Backoff entre tentatives de reconnexion, en secondes (plan §6).
-    /// Le nombre d'entrées définit aussi le plafond de tentatives consécutives.
-    static let backoffSeconds: [Int] = [2, 5, 15, 30, 60]
-
-    /// Délai avant la tentative `attempt` (1-indexé), ou `nil` si on a dépassé le plafond.
-    static func backoffDelay(forAttempt attempt: Int) -> Int? {
-        guard attempt >= 1, attempt <= backoffSeconds.count else { return nil }
-        return backoffSeconds[attempt - 1]
-    }
-
     private var running: [UUID: RunningEntry] = [:]
-    private var tunnelsById: [UUID: Tunnel] = [:]
+    private var tunnelsById: [UUID: TunnelConfig] = [:]
     private var userStoppedIds: Set<UUID> = []
+    /// Tunnels killed on purpose to be respawned at once (network change).
+    private var immediateRestartIds: Set<UUID> = []
     private var lastStderrLine: [UUID: String] = [:]
     private var reconnectAttempts: [UUID: Int] = [:]
     private var reconnectTasks: [UUID: Task<Void, Never>] = [:]
-    private(set) var states: [UUID: TunnelState] = [:]
+    private var networkTask: Task<Void, Never>?
+    public private(set) var states: [UUID: TunnelState] = [:]
 
-    private let logStore: LogStore
-    private let pidStore: RuntimePIDStore
+    private let environment: Environment
+    private let logStore: LogStore?
+    private let pidStore: RuntimePIDStore?
 
-    nonisolated let stateChanges: AsyncStream<StateChange>
+    public nonisolated let stateChanges: AsyncStream<StateChange>
     private nonisolated let continuation: AsyncStream<StateChange>.Continuation
 
-    struct StateChange: Sendable {
-        let id: UUID
-        let state: TunnelState
-    }
-
-    init(logStore: LogStore, pidStore: RuntimePIDStore = RuntimePIDStore()) {
+    /// `pidStore` enables orphan adoption; leave it `nil` where ssh children
+    /// cannot outlive the process (the daemon) and in tests.
+    public init(environment: Environment = .live, logStore: LogStore? = nil, pidStore: RuntimePIDStore? = nil) {
+        self.environment = environment
         self.logStore = logStore
         self.pidStore = pidStore
         var c: AsyncStream<StateChange>.Continuation!
@@ -57,16 +91,17 @@ actor TunnelRunner {
     // MARK: - Public API
 
     /// Démarrage manuel : remet à zéro le compteur de reconnexion.
-    func start(_ tunnel: Tunnel) {
+    public func start(_ tunnel: TunnelConfig) {
         cancelReconnect(id: tunnel.id)
         reconnectAttempts[tunnel.id] = 0
         userStoppedIds.remove(tunnel.id)
         spawn(tunnel)
     }
 
-    func stop(id: UUID) async {
+    public func stop(id: UUID) async {
         cancelReconnect(id: id)
         reconnectAttempts[id] = 0
+        immediateRestartIds.remove(id)
 
         guard let entry = running[id] else {
             if case .reconnecting = states[id] {
@@ -109,10 +144,11 @@ actor TunnelRunner {
         }
     }
 
-    func stopAll() async {
+    public func stopAll() async {
         for id in reconnectTasks.keys {
             cancelReconnect(id: id)
         }
+        immediateRestartIds.removeAll()
 
         let snapshot = running
         guard !snapshot.isEmpty else { return }
@@ -146,9 +182,8 @@ actor TunnelRunner {
 
     /// À appeler au démarrage : réadopte les ssh orphelins survivant à un
     /// crash/SIGKILL de Skluz, en validant le PID contre la liste connue.
-    func adoptOrphans(among tunnels: [Tunnel]) {
-        let registry = pidStore.load()
-        guard !registry.isEmpty else { return }
+    public func adoptOrphans(among tunnels: [TunnelConfig]) {
+        guard let registry = pidStore?.load(), !registry.isEmpty else { return }
 
         for (id, pid) in registry {
             guard running[id] == nil,
@@ -160,16 +195,16 @@ actor TunnelRunner {
             }
             tunnelsById[id] = tunnel
             let monitor = makeAdoptedMonitor(id: id, pid: pid)
-            running[id] = RunningEntry(pid: pid, process: nil,
-                                       stderrPipe: nil, stdoutPipe: nil, monitor: monitor)
-            emit(.running(pid: pid, since: Date()), for: id)
+            running[id] = RunningEntry(pid: pid, process: nil, stderrPipe: nil, stdoutPipe: nil,
+                                       startedAt: environment.now(), monitor: monitor)
+            emit(.running(pid: pid, since: environment.now()), for: id)
         }
         writeRegistry()
     }
 
     /// À appeler au démarrage, après `adoptOrphans` : lance les tunnels marqués
     /// « Démarrer au lancement » qui ne tournent pas déjà.
-    func startAutoStartTunnels(among tunnels: [Tunnel]) {
+    public func startAutoStartTunnels(among tunnels: [TunnelConfig]) {
         for tunnel in Self.autoStartCandidates(among: tunnels, alreadyRunning: Set(running.keys)) {
             start(tunnel)
         }
@@ -177,21 +212,40 @@ actor TunnelRunner {
 
     /// Tunnels à démarrer au lancement : `autoStart` et activés, en excluant
     /// ceux déjà actifs (un orphelin réadopté occupe déjà son port local).
-    static func autoStartCandidates(among tunnels: [Tunnel], alreadyRunning: Set<UUID>) -> [Tunnel] {
+    public static func autoStartCandidates(among tunnels: [TunnelConfig], alreadyRunning: Set<UUID>) -> [TunnelConfig] {
         tunnels.filter { $0.autoStart && $0.enabled && !alreadyRunning.contains($0.id) }
+    }
+
+    /// Reacts to network changes for System-mode tunnels (the daemon passes
+    /// `NetworkMonitor.events()`; the Session app does not watch the network).
+    public func watchNetwork(_ events: AsyncStream<NetworkEvent>) {
+        networkTask?.cancel()
+        networkTask = Task { [weak self] in
+            for await event in events {
+                await self?.handleNetwork(event)
+            }
+        }
     }
 
     // MARK: - Process lifecycle
 
-    private func spawn(_ tunnel: Tunnel) {
+    private func spawn(_ tunnel: TunnelConfig) {
         guard running[tunnel.id] == nil else { return }
         tunnelsById[tunnel.id] = tunnel
         lastStderrLine.removeValue(forKey: tunnel.id)
+
+        let arguments: [String]
+        do {
+            arguments = try SSHCommandBuilder.arguments(for: tunnel, paths: environment.systemPaths)
+        } catch {
+            emit(.failed(reason: error.localizedDescription, at: environment.now()), for: tunnel.id)
+            return
+        }
         emit(.starting, for: tunnel.id)
 
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: SSHCommandBuilder.sshPath)
-        process.arguments = SSHCommandBuilder.arguments(for: tunnel)
+        process.executableURL = environment.sshExecutable
+        process.arguments = arguments
 
         let stderrPipe = Pipe()
         let stdoutPipe = Pipe()
@@ -216,6 +270,7 @@ actor TunnelRunner {
                 process: process,
                 stderrPipe: stderrPipe,
                 stdoutPipe: stdoutPipe,
+                startedAt: environment.now(),
                 monitor: nil
             )
             writeRegistry()
@@ -225,15 +280,14 @@ actor TunnelRunner {
                 await self?.confirmRunning(id: id)
             }
         } catch {
-            emit(.failed(reason: error.localizedDescription, at: Date()), for: tunnel.id)
+            emit(.failed(reason: error.localizedDescription, at: environment.now()), for: tunnel.id)
         }
     }
 
     private func confirmRunning(id: UUID) {
         guard let entry = running[id], let process = entry.process, process.isRunning else { return }
         if case .starting = states[id] {
-            reconnectAttempts[id] = 0
-            emit(.running(pid: process.processIdentifier, since: Date()), for: id)
+            emit(.running(pid: process.processIdentifier, since: environment.now()), for: id)
         }
     }
 
@@ -244,35 +298,39 @@ actor TunnelRunner {
         writeRegistry()
 
         let stderrTail = lastStderrLine.removeValue(forKey: id)
-
-        if userStoppedIds.remove(id) != nil || exitCode == 0 {
-            emit(.stopped, for: id)
-            return
-        }
-
-        let reason = failureReason(exitCode: exitCode, stderrTail: stderrTail)
-        guard let tunnel = tunnelsById[id], tunnel.autoRestart else {
-            emit(.failed(reason: reason, at: Date()), for: id)
-            return
-        }
-        scheduleReconnect(tunnel: tunnel, lastReason: reason)
+        finishRun(id: id, startedAt: entry.startedAt, exitCode: exitCode,
+                  reason: failureReason(exitCode: exitCode, stderrTail: stderrTail))
     }
 
     /// Mort détectée par polling pour un process adopté (pas de terminationHandler).
     private func handleAdoptedDeath(id: UUID) {
-        guard running.removeValue(forKey: id) != nil else { return }
+        guard let entry = running.removeValue(forKey: id) else { return }
         writeRegistry()
+        finishRun(id: id, startedAt: entry.startedAt, exitCode: nil,
+                  reason: "Connexion perdue (process ssh adopté terminé).")
+    }
 
+    private func finishRun(id: UUID, startedAt: Date, exitCode: Int32?, reason: String) {
         if userStoppedIds.remove(id) != nil {
             emit(.stopped, for: id)
             return
         }
-        let reason = "Connexion perdue (process ssh adopté terminé)."
-        guard let tunnel = tunnelsById[id], tunnel.autoRestart else {
-            emit(.failed(reason: reason, at: Date()), for: id)
+        guard let tunnel = tunnelsById[id] else {
+            emit(.stopped, for: id)
             return
         }
-        scheduleReconnect(tunnel: tunnel, lastReason: reason)
+        if immediateRestartIds.remove(id) != nil {
+            reconnectAttempts[id] = 0
+            spawn(tunnel)
+            return
+        }
+        guard RestartPolicy.shouldRestart(mode: tunnel.mode, autoRestart: tunnel.autoRestart, exitCode: exitCode) else {
+            emit(exitCode == 0 ? .stopped : .failed(reason: reason, at: environment.now()), for: id)
+            return
+        }
+        let uptime = environment.now().timeIntervalSince(startedAt)
+        let attempt = RestartPolicy.nextAttempt(previous: reconnectAttempts[id] ?? 0, uptime: uptime)
+        scheduleReconnect(tunnel: tunnel, attempt: attempt, lastReason: reason)
     }
 
     private func makeAdoptedMonitor(id: UUID, pid: Int32) -> Task<Void, Never> {
@@ -288,17 +346,16 @@ actor TunnelRunner {
         }
     }
 
-    // MARK: - Auto-restart (backoff exponentiel)
+    // MARK: - Auto-restart
 
-    private func scheduleReconnect(tunnel: Tunnel, lastReason: String) {
+    private func scheduleReconnect(tunnel: TunnelConfig, attempt: Int, lastReason: String) {
         let id = tunnel.id
-        let attempt = (reconnectAttempts[id] ?? 0) + 1
-
-        guard let delay = Self.backoffDelay(forAttempt: attempt) else {
+        guard let delay = RestartPolicy.delay(forAttempt: attempt, mode: tunnel.mode,
+                                              random: environment.random()) else {
             reconnectAttempts[id] = 0
             emit(.failed(
-                reason: "Reconnexion abandonnée après \(Self.backoffSeconds.count) tentatives. \(lastReason)",
-                at: Date()
+                reason: "Reconnexion abandonnée après \(RestartPolicy.sessionSchedule.count) tentatives. \(lastReason)",
+                at: environment.now()
             ), for: id)
             return
         }
@@ -306,8 +363,13 @@ actor TunnelRunner {
         reconnectAttempts[id] = attempt
         emit(.reconnecting(attempt: attempt), for: id)
 
+        let sleep = environment.sleep
         reconnectTasks[id] = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(delay))
+            do {
+                try await sleep(delay)
+            } catch {
+                return
+            }
             if Task.isCancelled { return }
             await self?.performReconnect(id: id)
         }
@@ -326,9 +388,39 @@ actor TunnelRunner {
         reconnectTasks[id] = nil
     }
 
+    // MARK: - Network (System mode)
+
+    private func handleNetwork(_ event: NetworkEvent) {
+        switch event {
+        case .available:
+            // Back online: retry now instead of waiting out a long backoff.
+            for id in Array(reconnectTasks.keys) {
+                guard let tunnel = tunnelsById[id], tunnel.mode == .system else { continue }
+                cancelReconnect(id: id)
+                reconnectAttempts[id] = 0
+                spawn(tunnel)
+            }
+        case .interfacesChanged:
+            // The TCP connections are likely dead but ssh would only notice
+            // after ServerAlive (45 s): restart the running tunnels now.
+            for (id, entry) in running {
+                guard tunnelsById[id]?.mode == .system else { continue }
+                immediateRestartIds.insert(id)
+                if let process = entry.process {
+                    if process.isRunning { process.terminate() }
+                } else {
+                    kill(entry.pid, SIGTERM)
+                }
+            }
+        case .lost:
+            break
+        }
+    }
+
     // MARK: - Helpers
 
     private func writeRegistry() {
+        guard let pidStore else { return }
         var map: [UUID: Int32] = [:]
         for (id, entry) in running {
             map[id] = entry.pid
@@ -336,7 +428,7 @@ actor TunnelRunner {
         pidStore.save(map)
     }
 
-    static func isAlive(_ pid: Int32) -> Bool {
+    public static func isAlive(_ pid: Int32) -> Bool {
         guard pid > 0 else { return false }
         if kill(pid, 0) == 0 { return true }
         return errno == EPERM
@@ -346,7 +438,7 @@ actor TunnelRunner {
         var buffer = [CChar](repeating: 0, count: Int(MAXPATHLEN))
         let length = proc_pidpath(pid, &buffer, UInt32(MAXPATHLEN))
         guard length > 0 else { return nil }
-        return String(cString: buffer)
+        return String(decoding: buffer.prefix(Int(length)).map { UInt8(bitPattern: $0) }, as: UTF8.self)
     }
 
     private func failureReason(exitCode: Int32, stderrTail: String?) -> String {
@@ -383,7 +475,7 @@ actor TunnelRunner {
                 let line = String(raw)
                 guard !line.isEmpty else { continue }
                 Task { [weak self] in
-                    await logStore.append(line, for: tunnelId)
+                    await logStore?.append(line, for: tunnelId)
                     await self?.recordStderr(line, for: tunnelId)
                 }
             }

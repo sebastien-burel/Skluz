@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		5A5C0C012FD0000100000003 /* SkluzCore in Frameworks */ = {isa = PBXBuildFile; productRef = 5A5C0C012FD0000100000002 /* SkluzCore */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		32473A2B2FB8753700D208A0 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -52,6 +56,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				5A5C0C012FD0000100000003 /* SkluzCore in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -112,6 +117,7 @@
 			);
 			name = Skluz;
 			packageProductDependencies = (
+				5A5C0C012FD0000100000002 /* SkluzCore */,
 			);
 			productName = Skluz;
 			productReference = 32473A1D2FB8753600D208A0 /* Skluz.app */;
@@ -195,6 +201,9 @@
 			);
 			mainGroup = 32473A142FB8753600D208A0;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				5A5C0C012FD0000100000001 /* XCLocalSwiftPackageReference "SkluzCore" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 32473A1E2FB8753600D208A0 /* Products */;
 			projectDirPath = "";
@@ -571,6 +580,20 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		5A5C0C012FD0000100000001 /* XCLocalSwiftPackageReference "SkluzCore" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = SkluzCore;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		5A5C0C012FD0000100000002 /* SkluzCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = SkluzCore;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 32473A152FB8753600D208A0 /* Project object */;
 }

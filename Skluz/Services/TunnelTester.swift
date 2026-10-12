@@ -1,8 +1,9 @@
 import Foundation
+import SkluzCore
 
 /// Lance un tunnel ssh de façon éphémère pour valider une configuration
 /// (bouton « Tester » de l'éditeur, plan §8). N'interagit ni avec le
-/// TunnelRunner, ni avec le LogStore, ni avec la persistance.
+/// TunnelSupervisor, ni avec le LogStore, ni avec la persistance.
 actor TunnelTester {
     enum Result: Sendable, Equatable {
         case success
@@ -26,13 +27,20 @@ actor TunnelTester {
     }
 
     func test(
-        _ tunnel: Tunnel,
+        _ tunnel: TunnelConfig,
         successAfter: Duration = .seconds(4),
         hardCap: Duration = .seconds(10)
     ) async -> Result {
+        let arguments: [String]
+        do {
+            arguments = try SSHCommandBuilder.arguments(for: tunnel)
+        } catch {
+            return .failure(error.localizedDescription)
+        }
+
         let process = Process()
         process.executableURL = URL(fileURLWithPath: SSHCommandBuilder.sshPath)
-        process.arguments = SSHCommandBuilder.arguments(for: tunnel)
+        process.arguments = arguments
 
         let errPipe = Pipe()
         let outPipe = Pipe()

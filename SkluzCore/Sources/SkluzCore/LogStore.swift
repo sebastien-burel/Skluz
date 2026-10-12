@@ -1,14 +1,14 @@
 import Foundation
 
-actor LogStore {
+public actor LogStore {
     private let capacityPerTunnel: Int
     private var buffers: [UUID: [String]] = [:]
 
-    init(capacityPerTunnel: Int = 1000) {
+    public init(capacityPerTunnel: Int = 1000) {
         self.capacityPerTunnel = capacityPerTunnel
     }
 
-    func append(_ line: String, for id: UUID) {
+    public func append(_ line: String, for id: UUID) {
         var buffer = buffers[id] ?? []
         buffer.append(line)
         if buffer.count > capacityPerTunnel {
@@ -17,11 +17,11 @@ actor LogStore {
         buffers[id] = buffer
     }
 
-    func lines(for id: UUID) -> [String] {
+    public func lines(for id: UUID) -> [String] {
         buffers[id] ?? []
     }
 
-    func clear(_ id: UUID) {
+    public func clear(_ id: UUID) {
         buffers.removeValue(forKey: id)
     }
 }

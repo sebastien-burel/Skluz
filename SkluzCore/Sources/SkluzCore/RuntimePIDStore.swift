@@ -3,18 +3,18 @@ import Foundation
 /// Persiste la correspondance tunnel → PID du process ssh, pour pouvoir
 /// réadopter les tunnels survivant à un crash/SIGKILL de Skluz.
 /// Best-effort : toute erreur d'I/O est silencieuse (on repart de zéro).
-nonisolated struct RuntimePIDStore: Sendable {
+public struct RuntimePIDStore: Sendable {
     private struct Wrapper: Codable {
         var pids: [String: Int32]
     }
 
-    let url: URL
+    public let url: URL
 
-    init(url: URL = RuntimePIDStore.defaultURL()) {
+    public init(url: URL = RuntimePIDStore.defaultURL()) {
         self.url = url
     }
 
-    static func defaultURL() -> URL {
+    public static func defaultURL() -> URL {
         let fm = FileManager.default
         let base = (try? fm.url(for: .applicationSupportDirectory, in: .userDomainMask,
                                 appropriateFor: nil, create: true))
@@ -24,7 +24,7 @@ nonisolated struct RuntimePIDStore: Sendable {
             .appendingPathComponent("runtime.json", isDirectory: false)
     }
 
-    func load() -> [UUID: Int32] {
+    public func load() -> [UUID: Int32] {
         guard let data = try? Data(contentsOf: url),
               let wrapper = try? JSONDecoder().decode(Wrapper.self, from: data) else {
             return [:]
@@ -36,7 +36,7 @@ nonisolated struct RuntimePIDStore: Sendable {
         return result
     }
 
-    func save(_ map: [UUID: Int32]) {
+    public func save(_ map: [UUID: Int32]) {
         let wrapper = Wrapper(pids: Dictionary(
             uniqueKeysWithValues: map.map { ($0.key.uuidString, $0.value) }
         ))

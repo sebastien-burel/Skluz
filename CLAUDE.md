@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Les **10 phases** de `PLAN_SKLUZ.md` sont implémentées, plus la réadoption des tunnels orphelins (hors plan, décidée avec Sébastien). Le projet est fonctionnel ; la v1.0 est signée, notarisée et validée sur une autre machine (DMG produit par `Tools/release.sh`, cf. `NOTARIZATION.md`).
 
-**Chantier en cours : `docs/PLAN_SKLUZD.md`** — daemon root `skluzd` (via `SMAppService.daemon`) + CLI `skluz`, pour ouvrir des tunnels « Système » sans session graphique (Mac mini déverrouillé par SSH). 8 phases, validation de Sébastien entre chacune. Phase 0 faite : audit et décisions D1–D6 validées dans `docs/AUDIT_SKLUZ.md` §9.
+**Chantier en cours : `docs/PLAN_SKLUZD.md`** — daemon root `skluzd` (via `SMAppService.daemon`) + CLI `skluz`, pour ouvrir des tunnels « Système » sans session graphique (Mac mini déverrouillé par SSH). 8 phases, validation de Sébastien entre chacune. Phase 0 faite (audit et décisions D1–D6 validées dans `docs/AUDIT_SKLUZ.md` §9) ; phase 1 (package `SkluzCore`) implémentée.
 
 **Autorité par mode** : `PLAN_SKLUZ.md` fait autorité pour le **mode Session** (l'app de barre de menus, comportement v1) ; `docs/PLAN_SKLUZD.md` fait autorité pour le **mode Système** (daemon, XPC, CLI, clés dédiées). Si tu détectes une contradiction entre ce CLAUDE.md et un plan, le plan gagne (signale-la à Sébastien). Continuer à valider visuellement chaque changement notable avant de l'enchaîner.
 
@@ -20,10 +20,14 @@ Gestionnaire de tunnels SSH macOS, app **menu bar uniquement** (`LSUIElement = Y
 
 ## Architecture en deux mots
 
-Deux actors Swift 6 forment le cœur :
+Le code partagé par l'app, le futur daemon `skluzd` et la CLI vit dans le package local **`SkluzCore/`** (phase 1 de `PLAN_SKLUZD`) :
 
+- **`TunnelConfig`** : modèle unique, avec `mode` (`.session` / `.system`) ; `tunnels.json` en schéma v2, migré depuis la v1 avec sauvegarde `tunnels.v1.json`.
+- **`SSHCommandBuilder`** : validation des champs puis deux politiques (Session = v1 inchangée, Système = liste blanche).
 - **`TunnelStore`** (actor) : persistance JSON + état en mémoire de la liste des tunnels.
-- **`TunnelRunner`** (actor) : gestion du cycle de vie des `Process` SSH (start/stop/restart, capture stderr → `LogStore`, backoff exponentiel auto-restart).
+- **`TunnelSupervisor`** (actor, ex-`TunnelRunner`) : cycle de vie des `Process` SSH (start/stop/restart, capture stderr → `LogStore`, `RestartPolicy` par mode, réaction réseau via `NetworkMonitor` en mode Système). Ses effets de bord (exécutable ssh, horloge, `sleep`, aléa) passent par `Environment` : `.live` en production, injecté seulement par les tests (faux ssh).
+
+L'app (`Skluz/`) garde l'UI, `SSHConfigParser`, `TunnelTester` et `LaunchAtLoginManager`.
 
 L'UI SwiftUI observe via `@Observable` (macros Swift 6), **pas de Combine**. Tous les modèles traversant les frontières d'actor doivent être `Sendable`.
 
@@ -64,18 +68,19 @@ Ces points sont des sources de bugs subtils ou de failles de sécurité — tout
 
 - **Liste blanche stricte** : la commande est construite uniquement depuis les champs typés de `TunnelConfig`. Jamais de `-o` libre, `ProxyCommand`, `LocalCommand`, `KnownHostsCommand`, `proxyJump` ni `extraArgs` — une option arbitraire = exécution de code en root.
 - `-F /dev/null -o BatchMode=yes -o StrictHostKeyChecking=yes` avec `known_hosts` dédié (`GlobalKnownHostsFile=/dev/null`) ; une clé d'hôte n'est ajoutée qu'après confirmation explicite de l'utilisateur. **Jamais `accept-new`.**
-- `-o ServerAliveInterval=15 -o ServerAliveCountMax=3 -o IdentitiesOnly=yes`, `user` obligatoire, écoute sur `127.0.0.1` sauf opt-in explicite.
+- `-o ServerAliveInterval=15 -o ServerAliveCountMax=3 -o IdentitiesOnly=yes`, `user` obligatoire, écoute sur `127.0.0.1` sauf opt-in explicite (`exposesOnNetwork`).
+- Clé passée par `-o IdentityFile="…"`, **jamais `-i`** (un `-i` absent fait retomber ssh sur les clés de root) ; chemins de `UserKnownHostsFile`/`IdentityFile` **entre guillemets** (ssh coupe sur les espaces).
 - **Seul stockage de secrets du projet, assumé** : clés privées dédiées **sans passphrase** dans `/Library/Application Support/Skluz/keys/` (`600 root:wheel`), compensées par une ligne `authorized_keys` restreinte côté serveur (`restrict,port-forwarding,permitopen=…`).
 - Fichiers root refusés s'ils n'appartiennent pas à root, sont trop ouverts ou sont des liens symboliques — le daemon reste vivant et expose l'erreur, il ne corrige jamais seul.
 - XPC : requirement de signature Team `82FW35VV68` **avec les identifiants entre parenthèses** ; appels de mutation réservés au groupe `admin`.
 
 ## Tests minimaux attendus
 
-Au minimum un test unitaire sur **la construction des arguments SSH** (`SSHCommandBuilder`) : donner un `Tunnel`, vérifier le tableau d'args produit. C'est là que les régressions silencieuses se cachent (le tunnel "marche" mais avec les mauvaises options). En mode Système, tester aussi les **rejets** (injection d'options, champs invalides).
+Au minimum un test unitaire sur **la construction des arguments SSH** (`SSHCommandBuilder`) : donner un `TunnelConfig`, vérifier le tableau d'args produit. C'est là que les régressions silencieuses se cachent (le tunnel "marche" mais avec les mauvaises options). En mode Système, tester aussi les **rejets** (injection d'options, champs invalides).
 
 ## Commandes courantes
 
-Scheme : `Skluz`. Cibles de test : `SkluzTests` (unitaires, Swift Testing) ;
+Scheme : `Skluz`. Cibles de test : `SkluzCoreTests` (package, l'essentiel des tests) et `SkluzTests` (app, Swift Testing) ;
 `SkluzUITests` est du boilerplate neutralisé (app menu bar sans fenêtre).
 
 ```sh
@@ -83,8 +88,11 @@ Scheme : `Skluz`. Cibles de test : `SkluzTests` (unitaires, Swift Testing) ;
 xcodebuild -project Skluz.xcodeproj -scheme Skluz -configuration Debug \
   -destination 'platform=macOS' build
 
-# Toute la suite de tests
+# Tests de l'app (SkluzTests)
 xcodebuild -project Skluz.xcodeproj -scheme Skluz -destination 'platform=macOS' test
+
+# Tests du package SkluzCore (builder, superviseur avec faux ssh, store…)
+swift test --package-path SkluzCore
 
 # Test ciblé (Swift Testing : Suite/fonction)
 xcodebuild -project Skluz.xcodeproj -scheme Skluz -destination 'platform=macOS' \
