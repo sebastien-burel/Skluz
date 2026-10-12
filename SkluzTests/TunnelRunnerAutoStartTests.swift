@@ -22,6 +22,12 @@ struct TunnelRunnerAutoStartTests {
         #expect(TunnelRunner.autoStartCandidates(among: [disabled], alreadyRunning: []).isEmpty)
     }
 
+    /// The test host is the real app: if this detection breaks, every test
+    /// run starts the user's autoStart tunnels and leaves them orphaned.
+    @MainActor @Test func appDetectsItIsHostingTests() {
+        #expect(AppDelegate.isHostingTests)
+    }
+
     @Test func skipsAdoptedOrphans() {
         let adopted = tunnel(autoStart: true)
         let fresh = tunnel(autoStart: true)
