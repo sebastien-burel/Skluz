@@ -39,7 +39,7 @@ Skluz.app/
    - La clé passe par `-o IdentityFile`, **jamais par `-i`** : ssh ignore silencieusement un `-i` vers un fichier absent et se rabat sur les clés par défaut du processus, donc celles de root (vérifié avec `ssh -G`).
 4. Les clés du daemon **n'ont pas de passphrase**, puisque le trousseau de session est verrouillé avant connexion. En compensation, elles sont dédiées aux tunnels et restreintes côté serveur (voir phase 5).
 5. Les ports d'écoute locaux sont liés à `127.0.0.1` par défaut. L'écoute sur une autre interface exige un champ explicite dans la config.
-6. Les appels XPC qui modifient l'état (`upsertTunnel`, `deleteTunnel`, `setEnabled`, `generateKey`, `importKey`, `trustHostKey`) sont réservés aux utilisateurs du groupe `admin` (`effectiveUserIdentifier` de la connexion). La lecture reste ouverte.
+6. Les appels XPC qui modifient l'état (`upsertTunnel`, `deleteTunnel`, `setEnabled`, `generateKey`, `importKey`, `trustHostKey`) ou qui font agir root sur le réseau (`fetchHostKey`, un seul à la fois) sont réservés aux utilisateurs du groupe `admin` (`effectiveUserIdentifier` de la connexion). La lecture (`version`, `status`, `listTunnels`, `listKeys`) reste ouverte.
 7. Le daemon refuse tout élément de `/Library/Application Support/Skluz/` qui n'appartient pas à root, a des droits trop larges ou est un lien symbolique (`lstat`).
 
 > **Décisions validées par Sébastien le 2026-10-12** (D1 à D6, détail dans
@@ -147,7 +147,7 @@ Skluz.app/
   - `generateKey(name:) -> publicKey`, `importKey(name:, privateKey:)` ;
   - `fetchHostKey(host:, port:) -> fingerprints` et `trustHostKey(host:, port:, key:)`.
 - Côté daemon, exiger une signature de code : `connection.setCodeSigningRequirement("anchor apple generic and certificate leaf[subject.OU] = \"82FW35VV68\" and (identifier \"net.haruni.skluz\" or identifier \"net.haruni.skluz.cli\")")`. Les **parenthèses sont obligatoires** : `and` est prioritaire sur `or`, et sans elles tout binaire ad hoc déclarant `net.haruni.skluz.cli` serait accepté. Les builds Debug passent aussi (le certificat Apple Development porte `OU=82FW35VV68`).
-- Les appels de mutation vérifient que `effectiveUserIdentifier` appartient au groupe `admin` ; `version`, `status`, `listTunnels` et `fetchHostKey` restent ouverts.
+- Les appels de mutation et `fetchHostKey` vérifient que `effectiveUserIdentifier` appartient au groupe `admin` ; `version`, `status`, `listTunnels` et `listKeys` restent ouverts.
 - `status()` expose aussi l'erreur de configuration globale du daemon (cf. phase 2).
 - Toute écriture de config passe par `SSHCommandBuilder` pour validation **avant** d'être persistée, puis le fichier est écrit de façon atomique. `fetchHostKey` applique la même validation host/port avant `ssh-keyscan`.
 

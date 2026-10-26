@@ -9,6 +9,10 @@ public actor TunnelSupervisor {
         /// Always `/usr/bin/ssh` in production (`.live`). Overridden only by
         /// tests, which run a fake ssh script.
         public var sshExecutable: URL
+        /// Put before the ssh arguments; empty in production. Tests run
+        /// `/bin/sh <script>`: launching a freshly written script directly
+        /// can leave it suspended in macOS's launch assessment.
+        public var leadingArguments: [String]
         public var systemPaths: SystemPaths
         public var now: @Sendable () -> Date
         public var sleep: @Sendable (Duration) async throws -> Void
@@ -17,12 +21,14 @@ public actor TunnelSupervisor {
 
         public init(
             sshExecutable: URL,
+            leadingArguments: [String] = [],
             systemPaths: SystemPaths,
             now: @escaping @Sendable () -> Date,
             sleep: @escaping @Sendable (Duration) async throws -> Void,
             random: @escaping @Sendable () -> Double
         ) {
             self.sshExecutable = sshExecutable
+            self.leadingArguments = leadingArguments
             self.systemPaths = systemPaths
             self.now = now
             self.sleep = sleep
@@ -50,6 +56,7 @@ public actor TunnelSupervisor {
         let pid: Int32
         let process: Process?
         let stderrPipe: Pipe?
+        let stderr: StderrCapture?
         let stdoutPipe: Pipe?
         let startedAt: Date
         var monitor: Task<Void, Never>?
@@ -60,7 +67,6 @@ public actor TunnelSupervisor {
     private var userStoppedIds: Set<UUID> = []
     /// Tunnels killed on purpose to be respawned at once (network change).
     private var immediateRestartIds: Set<UUID> = []
-    private var lastStderrLine: [UUID: String] = [:]
     /// Why the last run of each tunnel ended, kept across reconnections.
     private var lastFailures: [UUID: String] = [:]
     private var reconnectAttempts: [UUID: Int] = [:]
@@ -195,8 +201,9 @@ public actor TunnelSupervisor {
             guard running[id] == nil,
                   let tunnel = tunnels.first(where: { $0.id == id }),
                   Self.isAlive(pid),
-                  let path = Self.executablePath(pid: pid),
-                  path.hasSuffix("/ssh"),
+                  // Exactly the binary we launch (/usr/bin/ssh in production),
+                  // not any process whose path merely ends in "ssh".
+                  Self.executablePath(pid: pid) == Self.canonicalPath(environment.sshExecutable),
                   // A recycled PID may belong to someone else's ssh: never
                   // adopt (and later kill) it, above all as root.
                   Self.ownerUID(pid: pid) == getuid() else {
@@ -205,7 +212,7 @@ public actor TunnelSupervisor {
             adopted.append(id)
             tunnelsById[id] = tunnel
             let monitor = makeAdoptedMonitor(id: id, pid: pid)
-            running[id] = RunningEntry(pid: pid, process: nil, stderrPipe: nil, stdoutPipe: nil,
+            running[id] = RunningEntry(pid: pid, process: nil, stderrPipe: nil, stderr: nil, stdoutPipe: nil,
                                        startedAt: environment.now(), monitor: monitor)
             emit(.running(pid: pid, since: environment.now()), for: id)
         }
@@ -249,7 +256,6 @@ public actor TunnelSupervisor {
     private func spawn(_ tunnel: TunnelConfig) {
         guard running[tunnel.id] == nil else { return }
         tunnelsById[tunnel.id] = tunnel
-        lastStderrLine.removeValue(forKey: tunnel.id)
 
         let arguments: [String]
         do {
@@ -262,7 +268,7 @@ public actor TunnelSupervisor {
 
         let process = Process()
         process.executableURL = environment.sshExecutable
-        process.arguments = arguments
+        process.arguments = environment.leadingArguments + arguments
 
         // ssh never needs input (-N, BatchMode); a daemon run from a terminal
         // must not hand it the tty.
@@ -272,13 +278,18 @@ public actor TunnelSupervisor {
         process.standardError = stderrPipe
         process.standardOutput = stdoutPipe
 
-        attachStderrReader(stderrPipe, tunnelId: tunnel.id)
+        let stderr = StderrCapture()
+        attachStderrReader(stderrPipe, capture: stderr, tunnelId: tunnel.id)
         attachStdoutDrain(stdoutPipe)
 
         let tunnelId = tunnel.id
         process.terminationHandler = { [weak self] proc in
             let code = proc.terminationStatus
             Task { [weak self] in
+                // The exit can be reported before the reader got the last
+                // stderr bytes: wait for EOF so the failure reason is complete
+                // (bounded, in case another process still holds the pipe).
+                await stderr.waitUntilFinished(timeout: .milliseconds(500))
                 await self?.handleTermination(id: tunnelId, exitCode: code)
             }
         }
@@ -289,6 +300,7 @@ public actor TunnelSupervisor {
                 pid: process.processIdentifier,
                 process: process,
                 stderrPipe: stderrPipe,
+                stderr: stderr,
                 stdoutPipe: stdoutPipe,
                 startedAt: environment.now(),
                 monitor: nil
@@ -317,7 +329,7 @@ public actor TunnelSupervisor {
         entry.stdoutPipe?.fileHandleForReading.readabilityHandler = nil
         writeRegistry()
 
-        let stderrTail = lastStderrLine.removeValue(forKey: id)
+        let stderrTail = entry.stderr?.lastLine
         finishRun(id: id, startedAt: entry.startedAt, exitCode: exitCode,
                   reason: failureReason(exitCode: exitCode, stderrTail: stderrTail))
     }
@@ -457,6 +469,14 @@ public actor TunnelSupervisor {
         return errno == EPERM
     }
 
+    /// `realpath`, comparable with `proc_pidpath` (Foundation's
+    /// `resolvingSymlinksInPath` strips `/private`, `proc_pidpath` keeps it).
+    static func canonicalPath(_ url: URL) -> String? {
+        guard let resolved = realpath(url.path(percentEncoded: false), nil) else { return nil }
+        defer { free(resolved) }
+        return String(cString: resolved)
+    }
+
     static func ownerUID(pid: Int32) -> uid_t? {
         var info = proc_bsdinfo()
         let size = Int32(MemoryLayout<proc_bsdinfo>.size)
@@ -484,32 +504,29 @@ public actor TunnelSupervisor {
         return "ssh sortie avec code \(exitCode)."
     }
 
-    fileprivate func recordStderr(_ line: String, for id: UUID) {
-        lastStderrLine[id] = line
-    }
 
     private func emit(_ state: TunnelState, for id: UUID) {
         states[id] = state
         continuation.yield(StateChange(id: id, state: state))
     }
 
-    private func attachStderrReader(_ pipe: Pipe, tunnelId: UUID) {
+    private func attachStderrReader(_ pipe: Pipe, capture: StderrCapture, tunnelId: UUID) {
         let logStore = self.logStore
-        pipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
+        pipe.fileHandleForReading.readabilityHandler = { handle in
             let data = handle.availableData
             // EOF : sans cette garde, la dispatch source reste « lisible »
             // après fermeture du pipe et le handler boucle à vide (~100 % CPU).
             if data.isEmpty {
                 handle.readabilityHandler = nil
+                capture.finish()
                 return
             }
-            guard let text = String(data: data, encoding: .utf8) else { return }
-            for raw in text.split(whereSeparator: \.isNewline) {
-                let line = String(raw)
-                guard !line.isEmpty else { continue }
-                Task { [weak self] in
-                    await logStore?.append(line, for: tunnelId)
-                    await self?.recordStderr(line, for: tunnelId)
+            // Recorded synchronously, so that the failure reason is complete
+            // when the exit is handled; only the log copy is asynchronous.
+            let lines = capture.absorb(data)
+            if let logStore, !lines.isEmpty {
+                Task {
+                    for line in lines { await logStore.append(line, for: tunnelId) }
                 }
             }
         }
@@ -525,5 +542,36 @@ public actor TunnelSupervisor {
                 handle.readabilityHandler = nil
             }
         }
+    }
+}
+
+/// stderr of one ssh run, written by the pipe reader and read at exit.
+final class StderrCapture: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _lastLine: String?
+    private var _isFinished = false
+
+    var lastLine: String? { lock.withLock { _lastLine } }
+
+    /// EOF reached: every line ssh wrote has been recorded.
+    func finish() {
+        lock.withLock { _isFinished = true }
+    }
+
+    func waitUntilFinished(timeout: Duration) async {
+        let deadline = ContinuousClock.now + timeout
+        while !lock.withLock({ _isFinished }) && ContinuousClock.now < deadline {
+            try? await Task.sleep(for: .milliseconds(5))
+        }
+    }
+
+    /// Records a chunk and returns its non-empty lines.
+    func absorb(_ data: Data) -> [String] {
+        guard !data.isEmpty, let text = String(data: data, encoding: .utf8) else { return [] }
+        let lines = text.split(whereSeparator: \.isNewline).map(String.init).filter { !$0.isEmpty }
+        if let last = lines.last {
+            lock.withLock { _lastLine = last }
+        }
+        return lines
     }
 }

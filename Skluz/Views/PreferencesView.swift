@@ -1,11 +1,13 @@
 import SwiftUI
 import ServiceManagement
+import SkluzCore
 
 struct PreferencesView: View {
     @State private var status: SMAppService.Status = LaunchAtLoginManager.status
     @State private var errorMessage: String?
     @State private var daemonStatus: SMAppService.Status = DaemonManager.status
     @State private var daemonError: String?
+    @State private var installationProblem: InstallationCheck.Problem? = DaemonManager.installationProblem
     @Environment(\.dismiss) private var dismiss
 
     private var launchAtLogin: Binding<Bool> {
@@ -64,6 +66,19 @@ struct PreferencesView: View {
                             .foregroundStyle(.orange)
                     }
 
+                    if DaemonManager.isInstalledInApplications, let problem = installationProblem {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Label(problem.message, systemImage: "lock.trianglebadge.exclamationmark")
+                                .foregroundStyle(.orange)
+                            Text("Dans le Terminal :")
+                                .foregroundStyle(.secondary)
+                            Text(problem.fixCommand)
+                                .font(.caption.monospaced())
+                                .textSelection(.enabled)
+                        }
+                        .font(.caption)
+                    }
+
                     if daemonStatus == .requiresApproval {
                         Label(
                             "Autorisez « Skluz » dans Réglages Système → Général → Ouverture et extensions → "
@@ -80,6 +95,7 @@ struct PreferencesView: View {
                             Button("Désactiver") { runDaemonAction(DaemonManager.unregister) }
                         default:
                             Button("Activer") { runDaemonAction(DaemonManager.register) }
+                                .disabled(installationProblem != nil)
                         }
                         if daemonStatus == .requiresApproval {
                             Button("Ouvrir les réglages") { DaemonManager.openSettings() }
@@ -121,6 +137,7 @@ struct PreferencesView: View {
             // The approval happens in System Settings: keep the status fresh.
             while !Task.isCancelled {
                 daemonStatus = DaemonManager.status
+                installationProblem = DaemonManager.installationProblem
                 try? await Task.sleep(for: .seconds(2))
             }
         }

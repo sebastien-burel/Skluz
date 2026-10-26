@@ -26,6 +26,7 @@ import Foundation
     /// `ManagedKey`. Admins only.
     func importKey(name: String, privateKey: Data, reply: @escaping @Sendable (Data?, String?) -> Void)
     /// `ssh-keyscan` of the server; replies JSON `[HostKey]` to show the user.
+    /// Admins only, one at a time.
     func fetchHostKey(host: String, port: Int, reply: @escaping @Sendable (Data?, String?) -> Void)
     /// Adds a key the user confirmed to the daemon's known_hosts. Admins only.
     func trustHostKey(host: String, port: Int, type: String, key: String,

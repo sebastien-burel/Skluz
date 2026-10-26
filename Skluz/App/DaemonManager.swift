@@ -1,5 +1,6 @@
 import Foundation
 import ServiceManagement
+import SkluzCore
 
 /// Thin wrapper around `SMAppService.daemon` for skluzd (`PLAN_SKLUZD.md`
 /// phase 3).
@@ -30,10 +31,18 @@ enum DaemonManager {
         Bundle.main.bundleURL.resolvingSymlinksInPath().path == requiredBundlePath
     }
 
+    /// Why the installed bundle cannot host the root daemon: a bundle the
+    /// user can write lets their processes swap in another team-signed
+    /// `skluzd` that launchd would run as root.
+    static var installationProblem: InstallationCheck.Problem? {
+        InstallationCheck.firstProblem(bundle: Bundle.main.bundleURL)
+    }
+
     /// Registers the daemon. The first time, macOS waits for the user's
     /// approval: the Login Items settings are then opened.
     static func register() throws {
         guard isInstalledInApplications else { throw Failure.notInApplications }
+        if let problem = installationProblem { throw problem }
         defer {
             if status == .requiresApproval { openSettings() }
         }

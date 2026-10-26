@@ -33,13 +33,15 @@ struct TunnelSupervisorTests {
         let observer: Task<Void, Never>
     }
 
+    /// Fake ssh scripts, run as `/bin/sh <script>` rather than launched
+    /// directly: macOS assesses a freshly written executable at launch and
+    /// can leave it suspended at `_dyld_start` under parallel load.
     private func makeFakeSSH(_ body: String) throws -> URL {
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("SkluzFakeSSH-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let url = dir.appendingPathComponent("ssh")
-        try Data("#!/bin/sh\n\(body)\n".utf8).write(to: url)
-        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path)
+        let url = dir.appendingPathComponent("ssh.sh")
+        try Data("\(body)\n".utf8).write(to: url)
         return url
     }
 
@@ -49,7 +51,8 @@ struct TunnelSupervisorTests {
         let recorder = Recorder()
         let start = Date()
         let environment = TunnelSupervisor.Environment(
-            sshExecutable: try makeFakeSSH(script),
+            sshExecutable: URL(fileURLWithPath: "/bin/sh"),
+            leadingArguments: [try makeFakeSSH(script).path(percentEncoded: false)],
             systemPaths: .standard,
             now: { start.addingTimeInterval(Date().timeIntervalSince(start) * timeScale) },
             sleep: { delay in
@@ -70,11 +73,12 @@ struct TunnelSupervisorTests {
         return Harness(supervisor: supervisor, recorder: recorder, observer: observer)
     }
 
-    private func waitUntil(timeout: Duration = .seconds(10), _ condition: () -> Bool) async throws {
+    private func waitUntil(_ recorder: Recorder, timeout: Duration = .seconds(10),
+                           _ condition: () -> Bool) async throws {
         let deadline = ContinuousClock.now + timeout
         while !condition() {
             guard ContinuousClock.now < deadline else {
-                Issue.record("Timed out waiting for condition")
+                Issue.record("Timed out waiting for condition; states: \(recorder.states), delays: \(recorder.delays)")
                 return
             }
             try await Task.sleep(for: .milliseconds(20))
@@ -98,7 +102,7 @@ struct TunnelSupervisorTests {
         let tunnel = systemTunnel()
         await h.supervisor.start(tunnel)
 
-        try await waitUntil { h.recorder.delays.count >= 9 }
+        try await waitUntil(h.recorder) { h.recorder.delays.count >= 9 }
         await h.supervisor.stop(id: tunnel.id)
 
         #expect(Array(h.recorder.delays.prefix(9)) == [1, 2, 4, 8, 16, 32, 60, 60, 60])
@@ -110,7 +114,7 @@ struct TunnelSupervisorTests {
         let h = try makeHarness(script: "exit 255", sleep: .fast)
         await h.supervisor.start(sessionTunnel(autoRestart: true))
 
-        try await waitUntil {
+        try await waitUntil(h.recorder) {
             h.recorder.states.contains { if case .failed = $0 { true } else { false } }
         }
 
@@ -127,7 +131,7 @@ struct TunnelSupervisorTests {
         let h = try makeHarness(script: "exit 255", sleep: .fast)
         await h.supervisor.start(sessionTunnel(autoRestart: false))
 
-        try await waitUntil {
+        try await waitUntil(h.recorder) {
             h.recorder.states.contains { if case .failed = $0 { true } else { false } }
         }
         #expect(h.recorder.delays.isEmpty)
@@ -137,14 +141,14 @@ struct TunnelSupervisorTests {
     @Test func sessionCleanExitStopsButSystemRestarts() async throws {
         let session = try makeHarness(script: "exit 0", sleep: .fast)
         await session.supervisor.start(sessionTunnel(autoRestart: true))
-        try await waitUntil { session.recorder.states.last == .stopped }
+        try await waitUntil(session.recorder) { session.recorder.states.last == .stopped }
         #expect(session.recorder.delays.isEmpty)
         session.observer.cancel()
 
         let system = try makeHarness(script: "exit 0", sleep: .hang)
         let tunnel = systemTunnel()
         await system.supervisor.start(tunnel)
-        try await waitUntil { system.recorder.delays.count == 1 }
+        try await waitUntil(system.recorder) { system.recorder.delays.count == 1 }
         await system.supervisor.stop(id: tunnel.id)
         system.observer.cancel()
     }
@@ -155,7 +159,7 @@ struct TunnelSupervisorTests {
         let h = try makeHarness(script: "exit 1", sleep: .fast, timeScale: 100)
         let tunnel = systemTunnel()
         await h.supervisor.start(tunnel)
-        try await waitUntil { h.recorder.delays.count >= 3 }
+        try await waitUntil(h.recorder) { h.recorder.delays.count >= 3 }
         await h.supervisor.stop(id: tunnel.id)
 
         #expect(Array(h.recorder.delays.prefix(3)) == [1, 2, 4])
@@ -167,7 +171,7 @@ struct TunnelSupervisorTests {
         let h = try makeHarness(script: "sleep 0.5; exit 1", sleep: .fast, timeScale: 100)
         let tunnel = systemTunnel()
         await h.supervisor.start(tunnel)
-        try await waitUntil { h.recorder.delays.count >= 3 }
+        try await waitUntil(h.recorder) { h.recorder.delays.count >= 3 }
         await h.supervisor.stop(id: tunnel.id)
 
         #expect(Array(h.recorder.delays.prefix(3)) == [1, 1, 1])
@@ -182,10 +186,10 @@ struct TunnelSupervisorTests {
         await h.supervisor.watchNetwork(events)
         let tunnel = systemTunnel()
         await h.supervisor.start(tunnel)
-        try await waitUntil { h.recorder.delays.count == 1 }
+        try await waitUntil(h.recorder) { h.recorder.delays.count == 1 }
 
         network.yield(.available)
-        try await waitUntil { h.recorder.delays.count == 2 }
+        try await waitUntil(h.recorder) { h.recorder.delays.count == 2 }
         await h.supervisor.stop(id: tunnel.id)
 
         // Without the reset the second delay would be 2 s.
@@ -203,11 +207,11 @@ struct TunnelSupervisorTests {
         func runningPIDs() -> [Int32] {
             h.recorder.states.compactMap { if case .running(let pid, _) = $0 { pid } else { nil } }
         }
-        try await waitUntil { runningPIDs().count == 1 }
+        try await waitUntil(h.recorder) { runningPIDs().count == 1 }
         let firstPID = runningPIDs()[0]
 
         network.yield(.interfacesChanged)
-        try await waitUntil { runningPIDs().count == 2 }
+        try await waitUntil(h.recorder) { runningPIDs().count == 2 }
         let secondPID = runningPIDs()[1]
 
         #expect(secondPID != firstPID)
@@ -216,7 +220,7 @@ struct TunnelSupervisorTests {
         #expect(!h.recorder.states.contains { if case .reconnecting = $0 { true } else { false } })
 
         await h.supervisor.stopAll()
-        try await waitUntil { !TunnelSupervisor.isAlive(secondPID) }
+        try await waitUntil(h.recorder) { !TunnelSupervisor.isAlive(secondPID) }
         h.observer.cancel()
     }
 
@@ -226,7 +230,7 @@ struct TunnelSupervisorTests {
         await h.supervisor.watchNetwork(events)
         let tunnel = sessionTunnel(autoRestart: true)
         await h.supervisor.start(tunnel)
-        try await waitUntil { h.recorder.delays.count == 1 }
+        try await waitUntil(h.recorder) { h.recorder.delays.count == 1 }
 
         network.yield(.available)
         try await Task.sleep(for: .milliseconds(300))
@@ -241,7 +245,7 @@ struct TunnelSupervisorTests {
                                 sleep: .hang)
         let tunnel = systemTunnel()
         await h.supervisor.start(tunnel)
-        try await waitUntil { h.recorder.delays.count == 1 }
+        try await waitUntil(h.recorder) { h.recorder.delays.count == 1 }
 
         #expect(await h.supervisor.lastFailure(for: tunnel.id)
                 == "ssh: connect to host h port 22: Connection refused")
@@ -256,7 +260,7 @@ struct TunnelSupervisorTests {
             sleep: .hang)
         let tunnel = systemTunnel()
         await h.supervisor.start(tunnel)
-        try await waitUntil { h.recorder.delays.count == 1 }
+        try await waitUntil(h.recorder) { h.recorder.delays.count == 1 }
 
         #expect(await h.supervisor.lastFailure(for: tunnel.id) == "Could not request local forwarding.")
         await h.supervisor.stop(id: tunnel.id)
@@ -268,7 +272,7 @@ struct TunnelSupervisorTests {
         let h = try makeHarness(script: "exit 0", sleep: .hang)
         let tunnel = systemTunnel()
         await h.supervisor.start(tunnel)
-        try await waitUntil { h.recorder.delays.count == 1 }
+        try await waitUntil(h.recorder) { h.recorder.delays.count == 1 }
 
         let reason = await h.supervisor.lastFailure(for: tunnel.id)
         #expect(reason?.contains("code 0") == true)
@@ -284,7 +288,7 @@ struct TunnelSupervisorTests {
         tunnel.host = "-oProxyCommand=touch /tmp/pwn"
         await h.supervisor.start(tunnel)
 
-        try await waitUntil {
+        try await waitUntil(h.recorder) {
             h.recorder.states.contains { if case .failed = $0 { true } else { false } }
         }
         #expect(!h.recorder.states.contains(.starting))

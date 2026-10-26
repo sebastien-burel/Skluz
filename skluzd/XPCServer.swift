@@ -130,8 +130,15 @@ final class DaemonService: NSObject, SkluzDaemonProtocol, @unchecked Sendable {
         }
     }
 
+    /// Admins only, one scan at a time: otherwise any local account could
+    /// make root run unbounded ssh-keyscan against hosts of its choice.
     func fetchHostKey(host: String, port: Int, reply: @escaping @Sendable (Data?, String?) -> Void) {
-        Task {
+        adminOnly("fetchHostKey", reply: { reply(nil, $0) }) {
+            guard Self.scanGate.enter() else {
+                reply(nil, "Une récupération de clé d'hôte est déjà en cours, réessayez dans quelques secondes.")
+                return
+            }
+            defer { Self.scanGate.leave() }
             Self.answer(reply) { try HostKeys.scan(host: host, port: port) }
         }
     }
@@ -154,6 +161,25 @@ final class DaemonService: NSObject, SkluzDaemonProtocol, @unchecked Sendable {
     }
 
     // MARK: - Helpers
+
+    private final class Gate: @unchecked Sendable {
+        private let lock = NSLock()
+        private var busy = false
+
+        func enter() -> Bool {
+            lock.withLock {
+                guard !busy else { return false }
+                busy = true
+                return true
+            }
+        }
+
+        func leave() {
+            lock.withLock { busy = false }
+        }
+    }
+
+    private static let scanGate = Gate()
 
     private static var shortHostName: String {
         var buffer = [CChar](repeating: 0, count: 256)
