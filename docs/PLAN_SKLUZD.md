@@ -165,14 +165,14 @@ Skluz.app/
 **Tâches**
 - `generateKey` : le daemon exécute `ssh-keygen -t ed25519 -N "" -C "skluzd@<hostname>" -f keys/<name>`, avec des permissions `600` root, et renvoie la clé publique.
 - Dans l'app, afficher la clé publique avec la ligne `authorized_keys` **restreinte** recommandée, prête à copier :
-  `restrict,port-forwarding,permitopen="<remoteHost>:<remotePort>" ssh-ed25519 AAAA… skluzd@macmini`
+  `restrict,port-forwarding,permitopen="<remoteHost>:<remotePort>",command="/bin/false" ssh-ed25519 AAAA… skluzd@macmini`
 - `importKey` : accepter une clé existante uniquement si elle n'a pas de passphrase (vérification par `ssh-keygen -y -P "" -f`). Sinon, refus avec un message expliquant pourquoi.
 - Premier contact avec un hôte : le daemon lance `ssh-keyscan`, l'app affiche les empreintes SHA256 et l'utilisateur confirme. Le daemon ajoute alors l'entrée à son `known_hosts`. Jamais de `StrictHostKeyChecking=accept-new`.
 
 **PASS**
 - Une clé générée est en `600 root:wheel`. Une clé avec passphrase est refusée à l'import.
 - Une connexion vers un hôte absent de `known_hosts` échoue avec l'état `hostKeyUnknown`, et non une acceptation silencieuse.
-- Avec la ligne `restrict,permitopen=…` côté serveur, le tunnel fonctionne, mais `ssh -i <clé> host` (shell interactif) est refusé.
+- Avec la ligne `restrict,permitopen=…,command="/bin/false"` côté serveur, le tunnel fonctionne, mais `ssh -i <clé> host 'id'` n'exécute rien. Sans `command=`, `restrict` ne bloque que le pty : **une commande passée à ssh s'exécuterait** (bug du plan initial, vérifié en phase 5).
 
 **FAIL** : une clé est stockée avec des permissions plus larges, ou une clé d'hôte est acceptée sans confirmation.
 

@@ -128,10 +128,12 @@ public enum ManagedKeys {
     }
 
     /// The `authorized_keys` line to install on the server: the key may only
-    /// open this one forward, no shell, no other forwarding.
+    /// open this one forward. `restrict` alone still lets the key run
+    /// commands (only the pty is refused): the forced `/bin/false` blocks
+    /// them, and never runs for the daemon, whose `ssh -N` opens no session.
     public static func restrictedAuthorizedKeysLine(publicKey: String, remoteHost: String, remotePort: Int) -> String {
         let host = remoteHost.contains(":") ? "[\(remoteHost)]" : remoteHost
-        return "restrict,port-forwarding,permitopen=\"\(host):\(remotePort)\" \(publicKey)"
+        return "restrict,port-forwarding,permitopen=\"\(host):\(remotePort)\",command=\"/bin/false\" \(publicKey)"
     }
 
     // MARK: - Helpers

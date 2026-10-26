@@ -125,8 +125,8 @@ struct ManagedKeysTests {
     @Test func restrictedAuthorizedKeysLine() {
         #expect(ManagedKeys.restrictedAuthorizedKeysLine(publicKey: "ssh-ed25519 AAAA skluzd@macmini",
                                                          remoteHost: "localhost", remotePort: 8000)
-                == "restrict,port-forwarding,permitopen=\"localhost:8000\" ssh-ed25519 AAAA skluzd@macmini")
+                == "restrict,port-forwarding,permitopen=\"localhost:8000\",command=\"/bin/false\" ssh-ed25519 AAAA skluzd@macmini")
         #expect(ManagedKeys.restrictedAuthorizedKeysLine(publicKey: "k", remoteHost: "::1", remotePort: 80)
-                == "restrict,port-forwarding,permitopen=\"[::1]:80\" k")
+                == "restrict,port-forwarding,permitopen=\"[::1]:80\",command=\"/bin/false\" k")
     }
 }

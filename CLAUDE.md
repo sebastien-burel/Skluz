@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Les **10 phases** de `PLAN_SKLUZ.md` sont implémentées, plus la réadoption des tunnels orphelins (hors plan, décidée avec Sébastien). Le projet est fonctionnel ; la v1.0 est signée, notarisée et validée sur une autre machine (DMG produit par `Tools/release.sh`, cf. `NOTARIZATION.md`).
 
-**Chantier en cours : `docs/PLAN_SKLUZD.md`** — daemon root `skluzd` (via `SMAppService.daemon`) + CLI `skluz`, pour ouvrir des tunnels « Système » sans session graphique (Mac mini déverrouillé par SSH). 8 phases, validation de Sébastien entre chacune. Phase 0 faite (audit et décisions D1–D6 validées dans `docs/AUDIT_SKLUZ.md` §9) ; phase 1 (package `SkluzCore`) validée ; phase 2 (daemon `skluzd` en exécution manuelle) validée ; phase 3 (launchd via `SMAppService`) validée ; phase 4 (API XPC) validée ; phase 5 (clés dédiées et clés d'hôte) à venir.
+**Chantier en cours : `docs/PLAN_SKLUZD.md`** — daemon root `skluzd` (via `SMAppService.daemon`) + CLI `skluz`, pour ouvrir des tunnels « Système » sans session graphique (Mac mini déverrouillé par SSH). 8 phases, validation de Sébastien entre chacune. Phase 0 faite (audit et décisions D1–D6 validées dans `docs/AUDIT_SKLUZ.md` §9) ; phase 1 (package `SkluzCore`) validée ; phase 2 (daemon `skluzd` en exécution manuelle) validée ; phase 3 (launchd via `SMAppService`) validée ; phase 4 (API XPC) validée ; phase 5 (clés dédiées et clés d'hôte) validée ; phase 6 (UI de l'app) à venir.
 
 **Autorité par mode** : `PLAN_SKLUZ.md` fait autorité pour le **mode Session** (l'app de barre de menus, comportement v1) ; `docs/PLAN_SKLUZD.md` fait autorité pour le **mode Système** (daemon, XPC, CLI, clés dédiées). Si tu détectes une contradiction entre ce CLAUDE.md et un plan, le plan gagne (signale-la à Sébastien). Continuer à valider visuellement chaque changement notable avant de l'enchaîner.
 
@@ -72,7 +72,7 @@ Ces points sont des sources de bugs subtils ou de failles de sécurité — tout
 - `-F /dev/null -o BatchMode=yes -o StrictHostKeyChecking=yes` avec `known_hosts` dédié (`GlobalKnownHostsFile=/dev/null`) ; une clé d'hôte n'est ajoutée qu'après confirmation explicite de l'utilisateur. **Jamais `accept-new`.**
 - `-o ServerAliveInterval=15 -o ServerAliveCountMax=3 -o IdentitiesOnly=yes`, `user` obligatoire, écoute sur `127.0.0.1` sauf opt-in explicite (`exposesOnNetwork`).
 - Clé passée par `-o IdentityFile="…"`, **jamais `-i`** (un `-i` absent fait retomber ssh sur les clés de root) ; chemins de `UserKnownHostsFile`/`IdentityFile` **entre guillemets** (ssh coupe sur les espaces).
-- **Seul stockage de secrets du projet, assumé** : clés privées dédiées **sans passphrase** dans `/Library/Application Support/Skluz/keys/` (`600 root:wheel`), compensées par une ligne `authorized_keys` restreinte côté serveur (`restrict,port-forwarding,permitopen=…`).
+- **Seul stockage de secrets du projet, assumé** : clés privées dédiées **sans passphrase** dans `/Library/Application Support/Skluz/keys/` (`600 root:wheel`), compensées par une ligne `authorized_keys` restreinte côté serveur (`restrict,port-forwarding,permitopen=…,command="/bin/false"` : sans `command=`, `restrict` laisse la clé exécuter des commandes).
 - Fichiers root refusés s'ils n'appartiennent pas à root, sont trop ouverts ou sont des liens symboliques — le daemon reste vivant et expose l'erreur, il ne corrige jamais seul.
 - XPC : requirement de signature Team `82FW35VV68` **avec les identifiants entre parenthèses** ; appels de mutation réservés au groupe `admin`.
 

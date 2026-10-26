@@ -73,4 +73,4 @@ chmod 644 "$BASE/known_hosts"
 
 echo "Ready. Add this line to ~$SSH_USER/.ssh/authorized_keys on $HOST:"
 echo
-echo "restrict,port-forwarding,permitopen=\"$REMOTE_HOST:$REMOTE_PORT\" $(cat "$KEY.pub")"
+echo "restrict,port-forwarding,permitopen=\"$REMOTE_HOST:$REMOTE_PORT\",command=\"/bin/false\" $(cat "$KEY.pub")"
