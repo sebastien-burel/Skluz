@@ -15,8 +15,10 @@ Skluz.app/
 └── Contents/
     ├── MacOS/
     │   ├── Skluz            ← app barre de menus (UI, client XPC)
-    │   ├── skluzd           ← daemon headless (root, launchd)
-    │   └── skluz            ← CLI de statut (client XPC)
+    │   └── skluzd           ← daemon headless (root, launchd)
+    ├── Helpers/
+    │   └── skluz            ← CLI de statut (client XPC) — pas dans MacOS/ : sur un volume
+    │                          insensible à la casse, « skluz » écraserait l'app « Skluz »
     └── Library/LaunchDaemons/
         └── net.haruni.skluzd.plist   (BundleProgram, MachServices, KeepAlive)
 
@@ -205,6 +207,7 @@ Skluz.app/
 **Tâches**
 - Mise à jour : au lancement, l'app compare `version()` du daemon à sa propre version. En cas d'écart, elle fait `unregister()` puis `register()`, ou demande au daemon de se terminer pour que launchd relance le nouveau binaire.
 - Désinstallation : un bouton « Supprimer le service système » fait `unregister()`. Une option supprime aussi `/Library/Application Support/Skluz/` après confirmation.
+- Détecter pendant qu'un tunnel tourne les refus de redirection du serveur (`open failed: administratively prohibited` sur stderr, `permitopen` qui ne correspond pas ou service absent côté serveur) : le tunnel est « up » mais ne transporte rien. L'exposer dans `status()`, le menu et `skluz status` avec un message actionnable (constaté en phase 6).
 - Ajouter à `docs/` une page `SKLUZD.md` (commandes `log` à écrire `/usr/bin/log` : sous zsh, `log` est une commande interne ; piège constaté en phase 4 : si LaunchServices connaît d'autres copies de Skluz — Corbeille, builds —, l'activation peut échouer en « Operation not permitted » ; corriger avec `lsregister -u` sur les copies parasites puis `lsregister -f /Applications/Skluz.app`) : fonctionnement, prérequis d'installation (Skluz dans `/Applications`, compte admin, une session VNC unique pour l'approbation initiale, déverrouillage FileVault par SSH), emplacements des fichiers, commandes de diagnostic (`skluz status`, `sudo launchctl print system/net.haruni.skluzd`, `log show --last boot --predicate 'subsystem == "net.haruni.skluzd"'`).
 
 **PASS — test de référence sur le Mac mini**
