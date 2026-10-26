@@ -24,12 +24,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         guard !Self.isHostingTests else { return }
+        // After an update relaunch, the previous instance may still be
+        // quitting: two Session supervisors would fight over the same ports.
+        Task {
+            await Self.waitForOtherInstancesToQuit()
+            start()
+        }
+    }
+
+    private func start() {
         menuBarController = MenuBarController(viewModel: viewModel, system: systemModel)
         systemModel.startPolling()
         updateWatch = DaemonManager.relaunchWhenReplaced()
         Task { [viewModel] in
             await viewModel.load()
         }
+    }
+
+    /// Asks any other running Skluz to quit and waits for it (10 s at most,
+    /// then forces it).
+    private static func waitForOtherInstancesToQuit() async {
+        let current = NSRunningApplication.current
+        let others = NSRunningApplication.runningApplications(withBundleIdentifier: Bundle.main.bundleIdentifier ?? "")
+            .filter { $0.processIdentifier != current.processIdentifier }
+        guard !others.isEmpty else { return }
+        others.forEach { $0.terminate() }
+        let deadline = ContinuousClock.now + .seconds(10)
+        while others.contains(where: { !$0.isTerminated }) && ContinuousClock.now < deadline {
+            try? await Task.sleep(for: .milliseconds(200))
+        }
+        others.filter { !$0.isTerminated }.forEach { $0.forceTerminate() }
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {

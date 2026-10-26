@@ -59,7 +59,10 @@ enum DaemonManager {
         process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
         process.arguments = ["-n", Bundle.main.bundleURL.path(percentEncoded: false)]
         try? process.run()
-        NSApp.terminate(nil)
+        // Terminate from the run loop, never from a main-queue block: quitting
+        // waits for a main-actor task (stopping the Session tunnels) that a
+        // busy main queue would never run, deadlocking the old instance.
+        NSApp.perform(#selector(NSApplication.terminate(_:)), with: nil, afterDelay: 0)
     }
 
     /// Relaunches from the new bundle once an update replaced this binary:
