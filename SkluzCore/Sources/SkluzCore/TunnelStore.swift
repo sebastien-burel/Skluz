@@ -22,6 +22,21 @@ public actor TunnelStore {
     public let storageURL: URL
     public private(set) var tunnels: [TunnelConfig] = []
 
+    /// File contents for `tunnels`, in the current schema.
+    public static func encode(_ tunnels: [TunnelConfig]) throws -> Data {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        return try encoder.encode(Wrapper(version: currentVersion, tunnels: tunnels))
+    }
+
+    /// Tunnels of a file in the current schema only (the daemon's file is
+    /// never v1: it is created by skluzd itself).
+    public static func decodeCurrent(_ data: Data) throws -> [TunnelConfig] {
+        let version = try JSONDecoder().decode(VersionProbe.self, from: data).version
+        guard version == currentVersion else { throw TunnelStoreError.unsupportedSchemaVersion(version) }
+        return try JSONDecoder().decode(Wrapper.self, from: data).tunnels
+    }
+
     public init(storageURL: URL = TunnelStore.defaultStorageURL()) {
         self.storageURL = storageURL
     }
@@ -88,11 +103,7 @@ public actor TunnelStore {
     private func persist() throws {
         let fm = FileManager.default
         try ensureDirectoryExists(fm: fm)
-        let wrapper = Wrapper(version: Self.currentVersion, tunnels: tunnels)
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        let data = try encoder.encode(wrapper)
-        try data.write(to: storageURL, options: .atomic)
+        try Self.encode(tunnels).write(to: storageURL, options: .atomic)
     }
 
     private func ensureDirectoryExists(fm: FileManager) throws {

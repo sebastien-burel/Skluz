@@ -9,8 +9,6 @@ import SkluzCore
 //                               must then belong to the current user
 //   skluzd --version
 
-let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "dev"
-
 func fail(_ message: String) -> Never {
     FileHandle.standardError.write(Data("skluzd: \(message)\n".utf8))
     exit(EX_USAGE)
@@ -21,7 +19,7 @@ var devBaseDirectory: String?
 while let argument = arguments.popFirst() {
     switch argument {
     case "--version":
-        print("skluzd \(version)")
+        print("skluzd \(daemonVersion)")
         exit(0)
     case "--base-dir":
         guard let value = arguments.popFirst() else { fail("--base-dir attend un dossier.") }
@@ -47,7 +45,7 @@ case (false, .some(let dir)):
     ownership = .current
 }
 
-Log.config.info("skluzd \(version) démarre (pid \(getpid()), config : \(paths.baseDirectory.path(percentEncoded: false))).")
+Log.config.info("skluzd \(daemonVersion) démarre (pid \(getpid()), config : \(paths.baseDirectory.path(percentEncoded: false))).")
 
 let daemon = Daemon(paths: paths, ownership: ownership)
 
@@ -75,10 +73,15 @@ let signalSources = [
     }
 ]
 
-Task { [daemon] in
+// The Mach service only exists when launchd runs the daemon: in development
+// mode (--base-dir) there is nothing to listen on.
+let xpcServer = devBaseDirectory == nil ? XPCServer(daemon: daemon) : nil
+
+Task { [daemon, xpcServer] in
     await daemon.start()
+    xpcServer?.start()
 }
 
-withExtendedLifetime(signalSources) {
+withExtendedLifetime((signalSources, xpcServer)) {
     dispatchMain()
 }

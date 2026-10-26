@@ -138,4 +138,38 @@ struct SystemLayoutTests {
         let someoneElse = FileOwnership(uid: getuid() + 1, gid: getgid())
         #expect(issue(paths, ownership: someoneElse) == .wrongOwner(uid: getuid()))
     }
+
+    // MARK: - Writes (XPC mutations)
+
+    @Test func savedTunnelsStay600AndRoundTrip() throws {
+        let paths = makePaths()
+        defer { cleanup(paths) }
+        try SystemLayout.prepare(paths, ownership: .current)
+        let tunnel = TunnelConfig(name: "vllm", mode: .system, type: .localForward, host: "dgx.haruni.net",
+                                  user: "sb", port: 2022, keyRef: .managed("vllm"), localPort: 18000,
+                                  remoteHost: "localhost", remotePort: 8000)
+
+        try SystemLayout.saveTunnels([tunnel], paths, ownership: .current)
+
+        #expect(mode(paths.tunnelsFile) == 0o600)
+        #expect(try SystemLayout.loadTunnels(paths, ownership: .current) == [tunnel])
+        let leftovers = try FileManager.default.contentsOfDirectory(atPath: paths.baseDirectory.path(percentEncoded: false))
+            .filter { $0.contains(".tmp-") }
+        #expect(leftovers.isEmpty)
+    }
+
+    @Test func savingReplacesASymlinkInsteadOfWritingThroughIt() throws {
+        let paths = makePaths()
+        defer { cleanup(paths) }
+        try SystemLayout.prepare(paths, ownership: .current)
+        let victim = paths.baseDirectory.deletingLastPathComponent().appending(path: "victim")
+        try Data("intact".utf8).write(to: victim)
+        try FileManager.default.removeItem(at: paths.tunnelsFile)
+        try FileManager.default.createSymbolicLink(at: paths.tunnelsFile, withDestinationURL: victim)
+
+        try SystemLayout.saveTunnels([], paths, ownership: .current)
+
+        #expect(try String(contentsOf: victim, encoding: .utf8) == "intact")
+        #expect(mode(paths.tunnelsFile) == 0o600)
+    }
 }

@@ -100,12 +100,43 @@ public enum SystemLayout {
         }
     }
 
-    /// Prepares the layout and reads the tunnels file.
-    public static func loadTunnels(_ paths: SystemPaths, ownership: FileOwnership) async throws -> [TunnelConfig] {
+    /// Prepares the layout and reads the tunnels file. Synchronous, so that a
+    /// read-modify-write by the daemon actor cannot interleave with another.
+    public static func loadTunnels(_ paths: SystemPaths, ownership: FileOwnership) throws -> [TunnelConfig] {
         try prepare(paths, ownership: ownership)
-        let store = TunnelStore(storageURL: paths.tunnelsFile)
-        try await store.load()
-        return await store.tunnels
+        let path = paths.tunnelsFile.path(percentEncoded: false)
+        do {
+            return try TunnelStore.decodeCurrent(Data(contentsOf: paths.tunnelsFile))
+        } catch let problem as SystemLayoutProblem {
+            throw problem
+        } catch {
+            throw SystemLayoutProblem(path: path, issue: .ioError(error.localizedDescription))
+        }
+    }
+
+    /// Atomically replaces the tunnels file. `Data.write(.atomic)` would create
+    /// the new file with the umask (644): the temporary file is created 600
+    /// and owned like the original before the rename.
+    public static func saveTunnels(_ tunnels: [TunnelConfig], _ paths: SystemPaths,
+                                   ownership: FileOwnership) throws {
+        let data = try TunnelStore.encode(tunnels)
+        let path = paths.tunnelsFile.path(percentEncoded: false)
+        let temporary = path + ".tmp-\(UUID().uuidString)"
+        let fd = open(temporary, O_CREAT | O_EXCL | O_WRONLY | O_NOFOLLOW | O_CLOEXEC, 0o600)
+        guard fd >= 0 else { throw problem(temporary) }
+        var renamed = false
+        defer {
+            if !renamed { unlink(temporary) }
+        }
+        let written = data.withUnsafeBytes { write(fd, $0.baseAddress, $0.count) }
+        let synced = written == data.count && fsync(fd) == 0
+        close(fd)
+        guard synced, chmod(temporary, 0o600) == 0,
+              lchown(temporary, ownership.uid, ownership.gid) == 0 else {
+            throw problem(temporary)
+        }
+        guard rename(temporary, path) == 0 else { throw problem(path) }
+        renamed = true
     }
 
     private static func createIfMissing(_ element: Element, ownership: FileOwnership) throws {

@@ -29,7 +29,7 @@ Le code partagé par l'app, le futur daemon `skluzd` et la CLI vit dans le packa
 
 L'app (`Skluz/`) garde l'UI, `SSHConfigParser`, `TunnelTester`, `LaunchAtLoginManager` et `DaemonManager` (`SMAppService.daemon`, refuse d'enregistrer hors de `/Applications/Skluz.app`). Le build de l'app embarque `skluzd` dans `Contents/MacOS/` et `LaunchDaemons/net.haruni.skluzd.plist` dans `Contents/Library/LaunchDaemons/` (phases Copy Files) ; `Tools/release.sh` vérifie leur présence et leur signature.
 
-Le daemon (`skluzd/`, cible outil `net.haruni.skluzd`) : `main.swift` (arguments, signaux `SIGTERM`/`SIGINT`/`SIGHUP`), `Daemon` (actor : `SystemLayout.loadTunnels` puis `TunnelReconciler`), `Log` (`os.Logger`, subsystem `net.haruni.skluzd`, recopié sur stderr dans un terminal). `--base-dir` n'existe que pour le développement et est **refusé en root**.
+Le daemon (`skluzd/`, cible outil `net.haruni.skluzd`) : `main.swift` (arguments, signaux `SIGTERM`/`SIGINT`/`SIGHUP`), `Daemon` (actor : `SystemLayout.loadTunnels` puis `TunnelReconciler`), `Log` (`os.Logger`, subsystem `net.haruni.skluzd`, recopié sur stderr dans un terminal). `--base-dir` n'existe que pour le développement et est **refusé en root**. XPC (`XPCServer`, Mach service `net.haruni.skluzd.xpc`, actif seulement sous launchd) : contrat `SkluzDaemonProtocol` et `DaemonClient` dans `SkluzCore/DaemonAPI.swift` et `DaemonClient.swift` ; requirement client avec les identifiants **entre parenthèses**, mutations réservées au groupe `admin`, écriture de la config via `SystemLayout.saveTunnels` (fichier temporaire `600` puis `rename`).
 
 L'UI SwiftUI observe via `@Observable` (macros Swift 6), **pas de Combine**. Tous les modèles traversant les frontières d'actor doivent être `Sendable`.
 
@@ -107,6 +107,9 @@ sudo "$(xcodebuild -project Skluz.xcodeproj -scheme skluzd -showBuildSettings \
 
 # Tunnel Système de test, en attendant l'UI (phases 4–6)
 sudo Tools/skluzd-dev-setup.sh vllm sb@dgx.haruni.net 2022 18000 localhost 8000
+
+# Sonde XPC (3 variantes : non signée, ad hoc, équipe) pour tester le daemon installé
+Tools/xpc-probe/build.sh && build/xpc-probe/team-cli status
 
 # Test ciblé (Swift Testing : Suite/fonction)
 xcodebuild -project Skluz.xcodeproj -scheme Skluz -destination 'platform=macOS' \
