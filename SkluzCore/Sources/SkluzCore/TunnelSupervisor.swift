@@ -61,6 +61,8 @@ public actor TunnelSupervisor {
     /// Tunnels killed on purpose to be respawned at once (network change).
     private var immediateRestartIds: Set<UUID> = []
     private var lastStderrLine: [UUID: String] = [:]
+    /// Why the last run of each tunnel ended, kept across reconnections.
+    private var lastFailures: [UUID: String] = [:]
     private var reconnectAttempts: [UUID: Int] = [:]
     private var reconnectTasks: [UUID: Task<Void, Never>] = [:]
     private var networkTask: Task<Void, Never>?
@@ -218,6 +220,12 @@ public actor TunnelSupervisor {
 
     /// Reacts to network changes for System-mode tunnels (the daemon passes
     /// `NetworkMonitor.events()`; the Session app does not watch the network).
+    /// Why the last run of `id` ended, if it failed. A System-mode tunnel never
+    /// reaches `.failed`: this is where its ssh errors surface.
+    public func lastFailure(for id: UUID) -> String? {
+        lastFailures[id]
+    }
+
     public func watchNetwork(_ events: AsyncStream<NetworkEvent>) {
         networkTask?.cancel()
         networkTask = Task { [weak self] in
@@ -247,6 +255,9 @@ public actor TunnelSupervisor {
         process.executableURL = environment.sshExecutable
         process.arguments = arguments
 
+        // ssh never needs input (-N, BatchMode); a daemon run from a terminal
+        // must not hand it the tty.
+        process.standardInput = FileHandle.nullDevice
         let stderrPipe = Pipe()
         let stdoutPipe = Pipe()
         process.standardError = stderrPipe
@@ -323,6 +334,9 @@ public actor TunnelSupervisor {
             reconnectAttempts[id] = 0
             spawn(tunnel)
             return
+        }
+        if exitCode != 0 {
+            lastFailures[id] = reason
         }
         guard RestartPolicy.shouldRestart(mode: tunnel.mode, autoRestart: tunnel.autoRestart, exitCode: exitCode) else {
             emit(exitCode == 0 ? .stopped : .failed(reason: reason, at: environment.now()), for: id)

@@ -236,6 +236,19 @@ struct TunnelSupervisorTests {
         h.observer.cancel()
     }
 
+    @Test func lastFailureKeepsTheSSHErrorAcrossReconnections() async throws {
+        let h = try makeHarness(script: "echo 'ssh: connect to host h port 22: Connection refused' >&2; exit 255",
+                                sleep: .hang)
+        let tunnel = systemTunnel()
+        await h.supervisor.start(tunnel)
+        try await waitUntil { h.recorder.delays.count == 1 }
+
+        #expect(await h.supervisor.lastFailure(for: tunnel.id)
+                == "ssh: connect to host h port 22: Connection refused")
+        await h.supervisor.stop(id: tunnel.id)
+        h.observer.cancel()
+    }
+
     // MARK: - Validation and auto-start
 
     @Test func invalidTunnelFailsWithoutSpawning() async throws {

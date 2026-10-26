@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Les **10 phases** de `PLAN_SKLUZ.md` sont implémentées, plus la réadoption des tunnels orphelins (hors plan, décidée avec Sébastien). Le projet est fonctionnel ; la v1.0 est signée, notarisée et validée sur une autre machine (DMG produit par `Tools/release.sh`, cf. `NOTARIZATION.md`).
 
-**Chantier en cours : `docs/PLAN_SKLUZD.md`** — daemon root `skluzd` (via `SMAppService.daemon`) + CLI `skluz`, pour ouvrir des tunnels « Système » sans session graphique (Mac mini déverrouillé par SSH). 8 phases, validation de Sébastien entre chacune. Phase 0 faite (audit et décisions D1–D6 validées dans `docs/AUDIT_SKLUZ.md` §9) ; phase 1 (package `SkluzCore`) implémentée.
+**Chantier en cours : `docs/PLAN_SKLUZD.md`** — daemon root `skluzd` (via `SMAppService.daemon`) + CLI `skluz`, pour ouvrir des tunnels « Système » sans session graphique (Mac mini déverrouillé par SSH). 8 phases, validation de Sébastien entre chacune. Phase 0 faite (audit et décisions D1–D6 validées dans `docs/AUDIT_SKLUZ.md` §9) ; phase 1 (package `SkluzCore`) validée ; phase 2 (daemon `skluzd` en exécution manuelle) implémentée.
 
 **Autorité par mode** : `PLAN_SKLUZ.md` fait autorité pour le **mode Session** (l'app de barre de menus, comportement v1) ; `docs/PLAN_SKLUZD.md` fait autorité pour le **mode Système** (daemon, XPC, CLI, clés dédiées). Si tu détectes une contradiction entre ce CLAUDE.md et un plan, le plan gagne (signale-la à Sébastien). Continuer à valider visuellement chaque changement notable avant de l'enchaîner.
 
@@ -28,6 +28,8 @@ Le code partagé par l'app, le futur daemon `skluzd` et la CLI vit dans le packa
 - **`TunnelSupervisor`** (actor, ex-`TunnelRunner`) : cycle de vie des `Process` SSH (start/stop/restart, capture stderr → `LogStore`, `RestartPolicy` par mode, réaction réseau via `NetworkMonitor` en mode Système). Ses effets de bord (exécutable ssh, horloge, `sleep`, aléa) passent par `Environment` : `.live` en production, injecté seulement par les tests (faux ssh).
 
 L'app (`Skluz/`) garde l'UI, `SSHConfigParser`, `TunnelTester` et `LaunchAtLoginManager`.
+
+Le daemon (`skluzd/`, cible outil `net.haruni.skluzd`) : `main.swift` (arguments, signaux `SIGTERM`/`SIGINT`/`SIGHUP`), `Daemon` (actor : `SystemLayout.loadTunnels` puis `TunnelReconciler`), `Log` (`os.Logger`, subsystem `net.haruni.skluzd`, recopié sur stderr dans un terminal). `--base-dir` n'existe que pour le développement et est **refusé en root**.
 
 L'UI SwiftUI observe via `@Observable` (macros Swift 6), **pas de Combine**. Tous les modèles traversant les frontières d'actor doivent être `Sendable`.
 
@@ -93,6 +95,18 @@ xcodebuild -project Skluz.xcodeproj -scheme Skluz -destination 'platform=macOS' 
 
 # Tests du package SkluzCore (builder, superviseur avec faux ssh, store…)
 swift test --package-path SkluzCore
+
+# Daemon : build, puis exécution manuelle (Ctrl-C = SIGTERM propre)
+xcodebuild -project Skluz.xcodeproj -scheme skluzd -configuration Debug \
+  -destination 'platform=macOS' build
+sudo "$(xcodebuild -project Skluz.xcodeproj -scheme skluzd -showBuildSettings \
+  2>/dev/null | awk -F' = ' '/ BUILT_PRODUCTS_DIR /{print $2}')/skluzd"
+
+# Journaux du daemon (/usr/bin/log : sous zsh, `log` est une commande interne)
+/usr/bin/log show --last 10m --info --predicate 'subsystem == "net.haruni.skluzd"'
+
+# Tunnel Système de test, en attendant l'UI (phases 4–6)
+sudo Tools/skluzd-dev-setup.sh vllm sb@dgx.haruni.net 2022 18000 localhost 8000
 
 # Test ciblé (Swift Testing : Suite/fonction)
 xcodebuild -project Skluz.xcodeproj -scheme Skluz -destination 'platform=macOS' \
