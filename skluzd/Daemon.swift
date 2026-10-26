@@ -7,6 +7,7 @@ actor Daemon {
     private let ownership: FileOwnership
     private let supervisor: TunnelSupervisor
     private var active: [UUID: TunnelConfig] = [:]
+    private var hasAdoptedOrphans = false
     /// Why no tunnel runs, when the config was refused (exposed over XPC in
     /// phase 4).
     private(set) var configProblem: String?
@@ -16,9 +17,11 @@ actor Daemon {
         self.ownership = ownership
         var environment = TunnelSupervisor.Environment.live
         environment.systemPaths = paths
-        // No PID registry: launchd kills the job's process group, so ssh
-        // children never outlive the daemon.
-        self.supervisor = TunnelSupervisor(environment: environment, logStore: LogStore(), pidStore: nil)
+        // ssh children run in their own process group: launchd does not kill
+        // them with a crashed daemon. The registry lets the next run adopt
+        // them instead of failing on their still-bound ports.
+        let pidStore = RuntimePIDStore(url: paths.baseDirectory.appending(path: "runtime.json"))
+        self.supervisor = TunnelSupervisor(environment: environment, logStore: LogStore(), pidStore: pidStore)
     }
 
     func start() async {
@@ -48,6 +51,15 @@ actor Daemon {
 
         for tunnel in configured where tunnel.mode == .session {
             Log.config.error("« \(tunnel.name) » est en mode Session dans la config système : ignoré.")
+        }
+
+        if !hasAdoptedOrphans {
+            hasAdoptedOrphans = true
+            let candidates = configured.filter { $0.mode == .system && $0.enabled }
+            for id in await supervisor.adoptOrphans(among: candidates) {
+                active[id] = candidates.first { $0.id == id }
+                Log.supervisor.info("« \(active[id]?.name ?? id.uuidString) » : ssh orphelin réadopté.")
+            }
         }
 
         let plan = TunnelReconciler.plan(active: active, configured: configured)

@@ -184,17 +184,25 @@ public actor TunnelSupervisor {
 
     /// À appeler au démarrage : réadopte les ssh orphelins survivant à un
     /// crash/SIGKILL de Skluz, en validant le PID contre la liste connue.
-    public func adoptOrphans(among tunnels: [TunnelConfig]) {
-        guard let registry = pidStore?.load(), !registry.isEmpty else { return }
+    /// Children get their own process group, so neither the app's exit nor
+    /// launchd's cleanup of the daemon kills them.
+    @discardableResult
+    public func adoptOrphans(among tunnels: [TunnelConfig]) -> [UUID] {
+        guard let registry = pidStore?.load(), !registry.isEmpty else { return [] }
 
+        var adopted: [UUID] = []
         for (id, pid) in registry {
             guard running[id] == nil,
                   let tunnel = tunnels.first(where: { $0.id == id }),
                   Self.isAlive(pid),
                   let path = Self.executablePath(pid: pid),
-                  path.hasSuffix("/ssh") else {
+                  path.hasSuffix("/ssh"),
+                  // A recycled PID may belong to someone else's ssh: never
+                  // adopt (and later kill) it, above all as root.
+                  Self.ownerUID(pid: pid) == getuid() else {
                 continue
             }
+            adopted.append(id)
             tunnelsById[id] = tunnel
             let monitor = makeAdoptedMonitor(id: id, pid: pid)
             running[id] = RunningEntry(pid: pid, process: nil, stderrPipe: nil, stdoutPipe: nil,
@@ -202,6 +210,7 @@ public actor TunnelSupervisor {
             emit(.running(pid: pid, since: environment.now()), for: id)
         }
         writeRegistry()
+        return adopted
     }
 
     /// À appeler au démarrage, après `adoptOrphans` : lance les tunnels marqués
@@ -446,6 +455,13 @@ public actor TunnelSupervisor {
         guard pid > 0 else { return false }
         if kill(pid, 0) == 0 { return true }
         return errno == EPERM
+    }
+
+    static func ownerUID(pid: Int32) -> uid_t? {
+        var info = proc_bsdinfo()
+        let size = Int32(MemoryLayout<proc_bsdinfo>.size)
+        guard proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, &info, size) == size else { return nil }
+        return info.pbi_uid
     }
 
     static func executablePath(pid: Int32) -> String? {
