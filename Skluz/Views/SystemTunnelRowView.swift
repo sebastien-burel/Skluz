@@ -45,6 +45,7 @@ struct SystemTunnelRowView: View {
 
     private var dotColor: Color {
         guard tunnel.enabled else { return Color.gray.opacity(0.35) }
+        if status?.forwardError != nil { return .orange }
         switch status?.phase {
         case .up:                              return .green
         case .starting:                        return .yellow
@@ -77,6 +78,8 @@ struct SystemTunnelRowView: View {
             return "La clé du serveur a changé : vérifiez-la avant toute chose (attaque possible)."
         case .reconnecting, .failed:
             return status?.lastError
+        case .up:
+            return status?.forwardError
         default:
             return nil
         }

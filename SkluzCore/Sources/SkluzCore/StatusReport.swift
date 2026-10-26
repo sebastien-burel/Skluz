@@ -18,7 +18,10 @@ public enum StatusReport {
         let enabled = status.tunnels.filter(\.enabled)
         let down = enabled.filter { $0.phase != .up }
         guard !down.isEmpty else {
-            return "OK : \(enabled.count) tunnel(s) système actif(s)"
+            let refused = enabled.filter { $0.forwardError != nil }.map { sanitize($0.name) }
+            let warning = refused.isEmpty ? "" : " — attention, redirection refusée par le serveur : "
+                + refused.joined(separator: ", ")
+            return "OK : \(enabled.count) tunnel(s) système actif(s)\(warning)"
         }
         let names = down.map { "\(sanitize($0.name)) (\($0.phase.rawValue))" }.joined(separator: ", ")
         return "KO : \(down.count)/\(enabled.count) tunnel(s) système en panne — \(names)"
@@ -35,7 +38,7 @@ public enum StatusReport {
                 String(tunnel.localPort),
                 tunnel.phase == .up ? tunnel.since.map { uptime(from: $0, to: now) } ?? "—" : "—",
                 String(tunnel.reconnections),
-                truncate(sanitize(tunnel.lastError ?? ""), to: errorWidth)
+                truncate(sanitize(tunnel.forwardError ?? tunnel.lastError ?? ""), to: errorWidth)
             ])
         }
         let widths = (0..<rows[0].count).map { column in rows.map { $0[column].count }.max() ?? 0 }
@@ -49,7 +52,7 @@ public enum StatusReport {
         if status.tunnels.isEmpty {
             lines.append("(aucun tunnel système)")
         }
-        var header = "skluzd \(sanitize(status.version))"
+        var header = "skluzd \(sanitize(status.version))" + (status.build.map { " (\(sanitize($0)))" } ?? "")
         if let problem = status.configProblem {
             header += " — CONFIGURATION REFUSÉE : \(sanitize(problem))"
         }

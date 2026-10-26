@@ -11,6 +11,7 @@ struct PreferencesView: View {
     @State private var daemonError: String?
     @State private var installationProblem: InstallationCheck.Problem? = DaemonManager.installationProblem
     @State private var cliInstalled = false
+    @State private var isConfirmingRemoval = false
     @Environment(\.dismiss) private var dismiss
 
     private var launchAtLogin: Binding<Bool> {
@@ -61,14 +62,30 @@ struct PreferencesView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     LabeledContent("État", value: DaemonManager.describe(daemonStatus))
-                    if let daemonVersion = system.status?.version {
+                    if let status = system.status {
                         LabeledContent("Version du service") {
-                            if daemonVersion == shortVersion {
-                                Text(daemonVersion)
+                            let daemon = "\(status.version) (\(status.build ?? "?"))"
+                            if system.isDaemonUpToDate {
+                                Text(daemon)
                             } else {
-                                Text("\(daemonVersion) — différente de l'app (\(shortVersion)) : désactivez puis réactivez le service.")
+                                Text("\(daemon) — différente de l'app (\(appVersion))")
                                     .foregroundStyle(.orange)
                             }
+                        }
+                    }
+                    if let message = system.updateMessage {
+                        Text(message).font(.caption).foregroundStyle(.secondary)
+                    }
+
+                    if DaemonManager.isRunningStaleBundle {
+                        HStack {
+                            Label(DaemonManager.Failure.staleBundle.localizedDescription,
+                                  systemImage: "arrow.clockwise.circle")
+                                .font(.caption)
+                                .foregroundStyle(.orange)
+                            Spacer()
+                            Button("Relancer Skluz") { DaemonManager.relaunch() }
+                                .controlSize(.small)
                         }
                     }
 
@@ -108,13 +125,30 @@ struct PreferencesView: View {
                             Button("Désactiver") { runDaemonAction(DaemonManager.unregister) }
                         default:
                             Button("Activer") { runDaemonAction(DaemonManager.register) }
-                                .disabled(installationProblem != nil)
+                                .disabled(installationProblem != nil || DaemonManager.isRunningStaleBundle)
                         }
                         if daemonStatus == .requiresApproval {
                             Button("Ouvrir les réglages") { DaemonManager.openSettings() }
                         }
+                        Spacer()
+                        if daemonStatus == .enabled || daemonStatus == .requiresApproval {
+                            Button("Supprimer le service système…", role: .destructive) { isConfirmingRemoval = true }
+                        }
                     }
                     .controlSize(.small)
+                    .confirmationDialog("Supprimer le service système ?", isPresented: $isConfirmingRemoval) {
+                        Button("Supprimer le service, garder la configuration") {
+                            runDaemonAction(DaemonManager.unregister)
+                        }
+                        Button("Supprimer le service et sa configuration", role: .destructive) {
+                            removeServiceAndConfiguration()
+                        }
+                        .disabled(!system.canManage)
+                    } message: {
+                        Text("Les tunnels Système s'arrêtent. Supprimer la configuration efface aussi "
+                             + "/Library/Application Support/Skluz (tunnels, clés dédiées, known_hosts) et "
+                             + "/usr/local/bin/skluz : les clés ne pourront pas être récupérées.")
+                    }
                     // The service is tied to the bundle ID, not the location:
                     // only the installed copy may manage it.
                     .disabled(!DaemonManager.isInstalledInApplications)
@@ -170,6 +204,19 @@ struct PreferencesView: View {
                 daemonStatus = DaemonManager.status
                 installationProblem = DaemonManager.installationProblem
                 try? await Task.sleep(for: .seconds(2))
+            }
+        }
+    }
+
+    /// Purge first: once unregistered, the daemon is gone and nobody else can
+    /// delete its root files.
+    private func removeServiceAndConfiguration() {
+        Task {
+            do {
+                try await system.purgeConfiguration()
+                runDaemonAction(DaemonManager.unregister)
+            } catch {
+                daemonError = "Échec : \(error.localizedDescription)"
             }
         }
     }

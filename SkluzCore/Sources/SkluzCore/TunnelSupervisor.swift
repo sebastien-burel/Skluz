@@ -242,6 +242,13 @@ public actor TunnelSupervisor {
         lastFailures[id]
     }
 
+    /// Latest forwarded connection the server refused during the current run
+    /// (`channel N: open failed: …`): ssh keeps running, so the tunnel looks
+    /// up while carrying nothing.
+    public func forwardFailure(for id: UUID) -> (line: String, at: Date)? {
+        running[id]?.stderr?.lastForwardFailure
+    }
+
     public func watchNetwork(_ events: AsyncStream<NetworkEvent>) {
         networkTask?.cancel()
         networkTask = Task { [weak self] in
@@ -549,9 +556,11 @@ public actor TunnelSupervisor {
 final class StderrCapture: @unchecked Sendable {
     private let lock = NSLock()
     private var _lastLine: String?
+    private var _lastForwardFailure: (line: String, at: Date)?
     private var _isFinished = false
 
     var lastLine: String? { lock.withLock { _lastLine } }
+    var lastForwardFailure: (line: String, at: Date)? { lock.withLock { _lastForwardFailure } }
 
     /// EOF reached: every line ssh wrote has been recorded.
     func finish() {
@@ -569,8 +578,10 @@ final class StderrCapture: @unchecked Sendable {
     func absorb(_ data: Data) -> [String] {
         guard !data.isEmpty, let text = String(data: data, encoding: .utf8) else { return [] }
         let lines = text.split(whereSeparator: \.isNewline).map(String.init).filter { !$0.isEmpty }
-        if let last = lines.last {
-            lock.withLock { _lastLine = last }
+        let forwardFailure = lines.last { ForwardFailure.isForwardFailure($0) }
+        lock.withLock {
+            if let last = lines.last { _lastLine = last }
+            if let forwardFailure { _lastForwardFailure = (forwardFailure, Date()) }
         }
         return lines
     }

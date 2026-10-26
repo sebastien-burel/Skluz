@@ -107,6 +107,18 @@ public final class DaemonClient: @unchecked Sendable {
         }
     }
 
+    public func restart() async throws {
+        try await call { proxy, done in
+            proxy.restart { done(Self.check($0)) }
+        }
+    }
+
+    public func purgeConfiguration() async throws {
+        try await call { proxy, done in
+            proxy.purgeConfiguration { done(Self.check($0)) }
+        }
+    }
+
     // MARK: - Plumbing
 
     /// Resumes exactly once, from the reply or from the connection error.

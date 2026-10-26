@@ -67,6 +67,21 @@ struct StatusReportTests {
         #expect(text.contains(String(repeating: "e", count: 59) + "…"))
     }
 
+    @Test func refusedForwardsShowInTableAndSummary() {
+        var refused = tunnel("vLLM", .up, upFor: 60)
+        refused.forwardError = "Le serveur refuse la redirection vers localhost:8888"
+        let report = status([refused])
+        #expect(StatusReport.table(report, now: now).contains("Le serveur refuse la redirection"))
+        #expect(StatusReport.summary(report).hasSuffix("redirection refusée par le serveur : vLLM"))
+        #expect(StatusReport.isHealthy(report))
+    }
+
+    @Test func statusWithoutBuildDecodes() throws {
+        let json = #"{"version":"1.0.1","tunnels":[]}"#
+        let decoded = try DaemonAPI.decoder().decode(DaemonStatus.self, from: Data(json.utf8))
+        #expect(decoded.build == nil)
+    }
+
     @Test func uptimeFormats() {
         #expect(StatusReport.uptime(from: now.addingTimeInterval(-40), to: now) == "40 s")
         #expect(StatusReport.uptime(from: now.addingTimeInterval(-720), to: now) == "12 min")
@@ -122,5 +137,17 @@ struct CommandLineLinkTests {
             try CommandLineLink.install(link: link, target: target)
         }
         #expect(try String(contentsOf: link, encoding: .utf8) == "mine")
+    }
+}
+
+struct ForwardFailureTests {
+    @Test func messagesAreActionable() {
+        #expect(ForwardFailure.isForwardFailure("channel 3: open failed: connect failed: Connection refused"))
+        #expect(!ForwardFailure.isForwardFailure("Permission denied (publickey)."))
+        #expect(ForwardFailure.message(for: "channel 2: open failed: administratively prohibited: open failed",
+                                       remoteHost: "localhost", remotePort: 8888).contains("permitopen"))
+        #expect(ForwardFailure.message(for: "channel 3: open failed: connect failed: Connection refused",
+                                       remoteHost: "localhost", remotePort: 8888)
+                == "Aucun service n'écoute sur localhost:8888 côté serveur : les connexions au tunnel échouent.")
     }
 }

@@ -17,7 +17,10 @@ final class SystemTunnelsModel {
     private(set) var tunnels: [TunnelConfig] = []
     private(set) var keys: [ManagedKey] = []
     private(set) var lastError: String?
+    /// Outcome of the automatic restart after an update, for Preferences.
+    private(set) var updateMessage: String?
     let isAdmin = AdminCheck.isCurrentUserAdmin
+    private var hasRequestedRestart = false
 
     /// Notifies the menu bar when System states change.
     var onChange: (() -> Void)?
@@ -71,6 +74,7 @@ final class SystemTunnelsModel {
             tunnels = newTunnels
             isReachable = true
             lastError = nil
+            await restartIfOutdated(newStatus)
         } catch {
             reset(error: error.localizedDescription)
         }
@@ -119,6 +123,38 @@ final class SystemTunnelsModel {
 
     func trust(_ key: HostKey, host: String, port: Int) async throws {
         try await run { try await $0.trustHostKey(key, host: host, port: port) }
+    }
+
+    /// Whether the daemon runs the same version as this app.
+    var isDaemonUpToDate: Bool {
+        guard let status else { return true }
+        let app = DaemonManager.appVersion
+        return status.version == app.short && status.build == app.build
+    }
+
+    /// After an update the daemon still runs the old binary: ask it to exit
+    /// so launchd starts the new one (tunnels stay open and are adopted).
+    /// Only from the installed app: a Debug build must not bounce it.
+    private func restartIfOutdated(_ status: DaemonStatus) async {
+        guard !isDaemonUpToDate else {
+            if hasRequestedRestart { updateMessage = "Service mis à jour (\(status.version), build \(status.build ?? "?"))." }
+            return
+        }
+        guard DaemonManager.isInstalledInApplications, isAdmin, !hasRequestedRestart else { return }
+        hasRequestedRestart = true
+        do {
+            try await connection().restart()
+            client = nil
+            updateMessage = "Service en cours de relance sur la nouvelle version…"
+        } catch {
+            updateMessage = "Relance automatique impossible (\(error.localizedDescription)) : "
+                + "désactivez puis réactivez le service."
+        }
+    }
+
+    /// Uninstall, before unregistering: tunnels stopped, root files deleted.
+    func purgeConfiguration() async throws {
+        try await connection().purgeConfiguration()
     }
 
     // MARK: - Helpers

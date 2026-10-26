@@ -2,6 +2,7 @@ import Foundation
 import SkluzCore
 
 let daemonVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "dev"
+let daemonBuild = Bundle.main.infoDictionary?["CFBundleVersion"] as? String
 
 enum DaemonError: Error, LocalizedError {
     case invalidRequest(String)
@@ -123,13 +124,21 @@ actor Daemon {
                 status.phase = issue
             }
             // Past errors of a tunnel that is up again would only mislead;
-            // `reconnections` still tells it flapped.
+            // `reconnections` still tells it flapped. Refused forwards are
+            // what matters then.
             if status.phase == .up {
                 status.lastError = nil
+                if let refusal = await supervisor.forwardFailure(for: tunnel.id),
+                   Date().timeIntervalSince(refusal.at) < ForwardFailure.window {
+                    status.forwardError = ForwardFailure.message(
+                        for: refusal.line,
+                        remoteHost: tunnel.remoteHost ?? "localhost",
+                        remotePort: tunnel.remotePort ?? tunnel.localPort)
+                }
             }
             tunnels.append(status)
         }
-        return DaemonStatus(version: daemonVersion, configProblem: configProblem, tunnels: tunnels)
+        return DaemonStatus(version: daemonVersion, build: daemonBuild, configProblem: configProblem, tunnels: tunnels)
     }
 
     func upsert(_ tunnel: TunnelConfig) async throws {
@@ -158,6 +167,19 @@ actor Daemon {
         try await mutate("\(enabled ? "activation" : "désactivation") de \(id.uuidString)") { tunnels in
             guard let index = tunnels.firstIndex(where: { $0.id == id }) else { throw DaemonError.notFound(id) }
             tunnels[index].enabled = enabled
+        }
+    }
+
+    /// Uninstall: no tunnel may outlive the service, then the root files go.
+    func purge() async throws {
+        Log.config.info("Désinstallation demandée : arrêt des tunnels et suppression de la configuration.")
+        await stopAll()
+        configured = []
+        hasAdoptedOrphans = true
+        do {
+            try FileManager.default.removeItem(at: paths.baseDirectory)
+        } catch CocoaError.fileNoSuchFile {
+            // Already gone.
         }
     }
 

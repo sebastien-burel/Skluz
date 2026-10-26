@@ -37,6 +37,16 @@ import Foundation
     /// Points /usr/local/bin/skluz at the CLI inside the installed app. The
     /// daemon derives the target from its own location. Admins only.
     func installCommandLineTool(reply: @escaping @Sendable (String?) -> Void)
+
+    // MARK: Update and removal (phase 8)
+
+    /// Exits so that launchd relaunches the binary of the installed app,
+    /// leaving the ssh children running for the next run to adopt. Admins only.
+    func restart(reply: @escaping @Sendable (String?) -> Void)
+    /// Stops every tunnel, deletes /Library/Application Support/Skluz and the
+    /// /usr/local/bin/skluz link to this app. Admins only; the app then
+    /// unregisters the service.
+    func purgeConfiguration(reply: @escaping @Sendable (String?) -> Void)
 }
 
 public enum DaemonAPI {
@@ -75,12 +85,15 @@ public enum DaemonAPI {
 /// Snapshot returned by `status()`.
 public struct DaemonStatus: Codable, Equatable, Sendable {
     public var version: String
+    /// `CFBundleVersion`; absent from daemons before phase 8.
+    public var build: String?
     /// Why no tunnel runs, when the daemon refused its config.
     public var configProblem: String?
     public var tunnels: [TunnelStatus]
 
-    public init(version: String, configProblem: String?, tunnels: [TunnelStatus]) {
+    public init(version: String, build: String? = nil, configProblem: String?, tunnels: [TunnelStatus]) {
         self.version = version
+        self.build = build
         self.configProblem = configProblem
         self.tunnels = tunnels
     }
@@ -105,6 +118,8 @@ public struct TunnelStatus: Codable, Equatable, Sendable {
     /// Start of the current run, when `up`.
     public var since: Date?
     public var lastError: String?
+    /// Set while up if the server recently refused forwarded connections.
+    public var forwardError: String?
     /// Reconnections since the daemon started.
     public var reconnections: Int
 
@@ -140,7 +155,7 @@ public struct TunnelStatus: Codable, Equatable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, name, localPort, enabled, phase, pid, since, lastError, reconnections
+        case id, name, localPort, enabled, phase, pid, since, lastError, forwardError, reconnections
     }
 
     /// `enabled` came after phase 4: a daemon that does not send it only
@@ -155,6 +170,7 @@ public struct TunnelStatus: Codable, Equatable, Sendable {
         pid = try c.decodeIfPresent(Int32.self, forKey: .pid)
         since = try c.decodeIfPresent(Date.self, forKey: .since)
         lastError = try c.decodeIfPresent(String.self, forKey: .lastError)
+        forwardError = try c.decodeIfPresent(String.self, forKey: .forwardError)
         reconnections = try c.decode(Int.self, forKey: .reconnections)
     }
 }

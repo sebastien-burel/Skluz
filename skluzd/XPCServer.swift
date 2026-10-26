@@ -159,6 +159,35 @@ final class DaemonService: NSObject, SkluzDaemonProtocol, @unchecked Sendable {
         }
     }
 
+    // MARK: - Update and removal
+
+    func restart(reply: @escaping @Sendable (String?) -> Void) {
+        adminOnly("restart", reply: reply) {
+            Log.supervisor.info("Relance demandée (mise à jour) : les tunnels restent ouverts et seront réadoptés.")
+            reply(nil)
+            // Let the reply leave before exiting; launchd (KeepAlive) then
+            // starts the binary now in the app bundle.
+            try? await Task.sleep(for: .milliseconds(300))
+            exit(0)
+        }
+    }
+
+    func purgeConfiguration(reply: @escaping @Sendable (String?) -> Void) {
+        let daemon = self.daemon
+        adminOnly("purgeConfiguration", reply: reply) {
+            do {
+                try await daemon.purge()
+                if let target = try? Self.bundledCommandLineTool(),
+                   CommandLineLink.isInstalled(target: target) {
+                    try? FileManager.default.removeItem(at: CommandLineLink.standardLink)
+                }
+                reply(nil)
+            } catch {
+                reply(error.localizedDescription)
+            }
+        }
+    }
+
     // MARK: - CLI
 
     func installCommandLineTool(reply: @escaping @Sendable (String?) -> Void) {

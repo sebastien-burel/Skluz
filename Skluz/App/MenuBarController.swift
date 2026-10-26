@@ -55,7 +55,9 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
     private func refreshStatus() {
         let status = MenuBarIconStatus.combined(viewModel.aggregateStatus,
                                                 system: system.tunnels.compactMap { tunnel in
-            tunnel.enabled ? system.status(for: tunnel.id)?.phase : nil
+            guard tunnel.enabled, let status = system.status(for: tunnel.id) else { return nil }
+            // Up but refused by the server: a warning, like a reconnection.
+            return status.forwardError != nil ? .reconnecting : status.phase
         })
         statusItem.button?.image = MenuBarIcon.image(status: status)
     }

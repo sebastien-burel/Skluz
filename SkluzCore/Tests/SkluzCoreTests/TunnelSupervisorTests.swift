@@ -280,6 +280,24 @@ struct TunnelSupervisorTests {
         h.observer.cancel()
     }
 
+    /// ssh keeps running when the server refuses a forwarded connection:
+    /// the refusal must be visible while the tunnel is up.
+    @Test func refusedForwardIsReportedWhileRunning() async throws {
+        let h = try makeHarness(
+            script: "printf 'channel 2: open failed: administratively prohibited: open failed\\r\\n' >&2; exec sleep 60",
+            sleep: .fast)
+        let tunnel = systemTunnel()
+        await h.supervisor.start(tunnel)
+        try await waitUntil(h.recorder) {
+            h.recorder.states.contains { if case .running = $0 { true } else { false } }
+        }
+
+        let refusal = await h.supervisor.forwardFailure(for: tunnel.id)
+        #expect(refusal?.line == "channel 2: open failed: administratively prohibited: open failed")
+        await h.supervisor.stopAll()
+        h.observer.cancel()
+    }
+
     // MARK: - Validation and auto-start
 
     @Test func invalidTunnelFailsWithoutSpawning() async throws {
