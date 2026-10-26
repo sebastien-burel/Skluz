@@ -504,7 +504,7 @@ public actor TunnelSupervisor {
                 return
             }
             guard let text = String(data: data, encoding: .utf8) else { return }
-            for raw in text.split(whereSeparator: { $0 == "\n" || $0 == "\r" }) {
+            for raw in text.split(whereSeparator: \.isNewline) {
                 let line = String(raw)
                 guard !line.isEmpty else { continue }
                 Task { [weak self] in

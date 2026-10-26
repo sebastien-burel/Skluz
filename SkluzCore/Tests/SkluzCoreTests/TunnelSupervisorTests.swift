@@ -249,6 +249,20 @@ struct TunnelSupervisorTests {
         h.observer.cancel()
     }
 
+    /// ssh ends its error lines with CRLF, a single Character in Swift.
+    @Test func crlfStderrKeepsOnlyTheLastLine() async throws {
+        let h = try makeHarness(
+            script: "printf 'bind [127.0.0.1]:18000: Address already in use\\r\\nCould not request local forwarding.\\r\\n' >&2; exit 255",
+            sleep: .hang)
+        let tunnel = systemTunnel()
+        await h.supervisor.start(tunnel)
+        try await waitUntil { h.recorder.delays.count == 1 }
+
+        #expect(await h.supervisor.lastFailure(for: tunnel.id) == "Could not request local forwarding.")
+        await h.supervisor.stop(id: tunnel.id)
+        h.observer.cancel()
+    }
+
     /// ssh exits 0 when killed with SIGTERM: the reason must still be kept.
     @Test func cleanExitStillRecordsAReason() async throws {
         let h = try makeHarness(script: "exit 0", sleep: .hang)

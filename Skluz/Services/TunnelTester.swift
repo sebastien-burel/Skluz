@@ -14,7 +14,7 @@ actor TunnelTester {
         private let lock = NSLock()
         private var lastLine: String?
         func absorb(_ chunk: String) {
-            let lines = chunk.split(whereSeparator: { $0 == "\n" || $0 == "\r" })
+            let lines = chunk.split(whereSeparator: \.isNewline)
                 .map(String.init)
                 .filter { !$0.isEmpty }
             guard let last = lines.last else { return }
