@@ -159,6 +159,33 @@ final class DaemonService: NSObject, SkluzDaemonProtocol, @unchecked Sendable {
         }
     }
 
+    // MARK: - CLI
+
+    func installCommandLineTool(reply: @escaping @Sendable (String?) -> Void) {
+        adminOnly("installCommandLineTool", reply: reply) {
+            do {
+                let target = try Self.bundledCommandLineTool()
+                try CommandLineLink.install(target: target)
+                Log.config.info("Commande installée : \(CommandLineLink.standardLink.path) → \(target.path)")
+                reply(nil)
+            } catch {
+                reply(error.localizedDescription)
+            }
+        }
+    }
+
+    /// Contents/Helpers/skluz of the bundle this daemon runs from.
+    private static func bundledCommandLineTool() throws -> URL {
+        var buffer = [CChar](repeating: 0, count: Int(MAXPATHLEN))
+        let length = proc_pidpath(getpid(), &buffer, UInt32(MAXPATHLEN))
+        guard length > 0 else { throw CommandLineLinkError.failed("emplacement du service inconnu") }
+        let executable = URL(fileURLWithPath: String(decoding: buffer.prefix(Int(length)).map { UInt8(bitPattern: $0) },
+                                                     as: UTF8.self))
+        // …/Skluz.app/Contents/MacOS/skluzd → …/Skluz.app/Contents/Helpers/skluz
+        return executable.deletingLastPathComponent().deletingLastPathComponent()
+            .appending(path: "Helpers/skluz")
+    }
+
     // MARK: - Helpers
 
     private final class Gate: @unchecked Sendable {

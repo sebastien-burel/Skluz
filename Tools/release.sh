@@ -146,6 +146,17 @@ case "$DAEMON_SIGINFO" in
 esac
 echo "  ok: skluzd embedded and signed"
 
+# The status CLI lives in Contents/Helpers (Contents/MacOS/skluz would
+# overwrite the app's Contents/MacOS/Skluz on a case-insensitive volume).
+CLI="$APP/Contents/Helpers/skluz"
+[ -x "$CLI" ] || fail "the skluz CLI is missing from $APP/Contents/Helpers"
+CLI_SIGINFO="$(codesign -d --verbose=2 "$CLI" 2>&1)"
+case "$CLI_SIGINFO" in
+  *"Identifier=net.haruni.skluz.cli"*"Authority=Developer ID Application"*) ;;
+  *) fail "the skluz CLI is not signed with Developer ID as net.haruni.skluz.cli" ;;
+esac
+echo "  ok: skluz CLI embedded and signed"
+
 # --- Notarize the app ------------------------------------------------------
 # Two passes on purpose. Stapling the DMG alone leaves the app WITHOUT a ticket
 # once dragged out, so Gatekeeper falls back to an online check — which fails

@@ -10,6 +10,7 @@ struct PreferencesView: View {
     @State private var daemonStatus: SMAppService.Status = DaemonManager.status
     @State private var daemonError: String?
     @State private var installationProblem: InstallationCheck.Problem? = DaemonManager.installationProblem
+    @State private var cliInstalled = false
     @Environment(\.dismiss) private var dismiss
 
     private var launchAtLogin: Binding<Bool> {
@@ -125,6 +126,15 @@ struct PreferencesView: View {
                     }
 
                     if daemonStatus == .enabled {
+                        LabeledContent("Commande skluz") {
+                            if system.isCommandLineToolInstalled || cliInstalled {
+                                Text("/usr/local/bin/skluz").font(.caption.monospaced())
+                            } else {
+                                Button("Installer dans /usr/local/bin") { installCommandLineTool() }
+                                    .controlSize(.small)
+                                    .disabled(!system.canManage)
+                            }
+                        }
                         Button("Passer des tunnels en mode Système…") {
                             dismiss()
                             onOpenMigration()
@@ -160,6 +170,18 @@ struct PreferencesView: View {
                 daemonStatus = DaemonManager.status
                 installationProblem = DaemonManager.installationProblem
                 try? await Task.sleep(for: .seconds(2))
+            }
+        }
+    }
+
+    private func installCommandLineTool() {
+        Task {
+            do {
+                try await system.installCommandLineTool()
+                cliInstalled = true
+                daemonError = nil
+            } catch {
+                daemonError = "Échec : \(error.localizedDescription)"
             }
         }
     }

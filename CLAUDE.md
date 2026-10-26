@@ -27,6 +27,8 @@ Le code partagé par l'app, le futur daemon `skluzd` et la CLI vit dans le packa
 - **`TunnelStore`** (actor) : persistance JSON + état en mémoire de la liste des tunnels.
 - **`TunnelSupervisor`** (actor, ex-`TunnelRunner`) : cycle de vie des `Process` SSH (start/stop/restart, capture stderr → `LogStore`, `RestartPolicy` par mode, réaction réseau via `NetworkMonitor` en mode Système). Ses effets de bord (exécutable ssh, horloge, `sleep`, aléa) passent par `Environment` : `.live` en production, injecté seulement par les tests. Les faux ssh des tests tournent en `/bin/sh <script>` (`leadingArguments`), jamais comme exécutables neufs : macOS peut suspendre indéfiniment à `_dyld_start` un exécutable tout juste écrit.
 
+La CLI (`SkluzCLI/`, cible `SkluzCLI`, produit `skluz`, identifiant `net.haruni.skluz.cli`) : `status`, `status --json`, `check`. **Piège de casse** : le volume est insensible à la casse, donc `skluz` et `Skluz` désignent le même dossier ou fichier — d'où `SkluzCLI/` pour les sources, `SkluzCLI` comme nom de cible (dossiers intermédiaires) et `Contents/Helpers/` dans le bundle.
+
 L'app (`Skluz/`) garde l'UI, `SSHConfigParser`, `TunnelTester`, `LaunchAtLoginManager` et `DaemonManager` (`SMAppService.daemon`, refuse d'enregistrer hors de `/Applications/Skluz.app`). Le build de l'app embarque `skluzd` dans `Contents/MacOS/` et `LaunchDaemons/net.haruni.skluzd.plist` dans `Contents/Library/LaunchDaemons/` (phases Copy Files) ; `Tools/release.sh` vérifie leur présence et leur signature.
 
 Le daemon (`skluzd/`, cible outil `net.haruni.skluzd`) : `main.swift` (arguments, signaux `SIGTERM`/`SIGINT`/`SIGHUP`), `Daemon` (actor : `SystemLayout.loadTunnels` puis `TunnelReconciler`), `Log` (`os.Logger`, subsystem `net.haruni.skluzd`, recopié sur stderr dans un terminal). `--base-dir` n'existe que pour le développement et est **refusé en root**. XPC (`XPCServer`, Mach service `net.haruni.skluzd.xpc`, actif seulement sous launchd) : contrat `SkluzDaemonProtocol` et `DaemonClient` dans `SkluzCore/DaemonAPI.swift` et `DaemonClient.swift` ; requirement client avec les identifiants **entre parenthèses**, mutations réservées au groupe `admin`, écriture de la config via `SystemLayout.saveTunnels` (fichier temporaire `600` puis `rename`).
@@ -108,6 +110,10 @@ sudo "$(xcodebuild -project Skluz.xcodeproj -scheme skluzd -showBuildSettings \
 
 # Tunnel Système de test, en attendant l'UI (phases 4–6)
 sudo Tools/skluzd-dev-setup.sh vllm sb@dgx.haruni.net 2022 18000 localhost 8000
+
+# CLI (embarquée dans Contents/Helpers/skluz, jamais Contents/MacOS : casse)
+"$(xcodebuild -project Skluz.xcodeproj -scheme Skluz -showBuildSettings \
+  2>/dev/null | awk -F' = ' '/ BUILT_PRODUCTS_DIR /{print $2}')/Skluz.app/Contents/Helpers/skluz" status
 
 # Sonde XPC (3 variantes : non signée, ad hoc, équipe) pour tester le daemon installé
 Tools/xpc-probe/build.sh && build/xpc-probe/team-cli status

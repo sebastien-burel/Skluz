@@ -106,6 +106,17 @@ final class SystemTunnelsModel {
         try await connection().fetchHostKeys(host: host, port: port)
     }
 
+    /// /usr/local/bin/skluz, created by the daemon (admins only).
+    func installCommandLineTool() async throws {
+        try await connection().installCommandLineTool()
+    }
+
+    /// Whether /usr/local/bin/skluz points to the CLI of the installed app.
+    var isCommandLineToolInstalled: Bool {
+        CommandLineLink.isInstalled(target: URL(filePath: DaemonManager.requiredBundlePath)
+            .appending(path: "Contents/Helpers/skluz"))
+    }
+
     func trust(_ key: HostKey, host: String, port: Int) async throws {
         try await run { try await $0.trustHostKey(key, host: host, port: port) }
     }

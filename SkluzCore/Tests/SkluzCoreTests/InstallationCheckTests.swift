@@ -14,11 +14,13 @@ struct InstallationCheckTests {
         let fm = FileManager.default
         try fm.createDirectory(at: bundle.appending(path: "Contents/MacOS"), withIntermediateDirectories: true)
         try fm.createDirectory(at: bundle.appending(path: "Contents/Library/LaunchDaemons"), withIntermediateDirectories: true)
-        for (file, mode) in [("Contents/MacOS/skluzd", 0o755), ("Contents/Library/LaunchDaemons/net.haruni.skluzd.plist", 0o644)] {
+        try fm.createDirectory(at: bundle.appending(path: "Contents/Helpers"), withIntermediateDirectories: true)
+        for (file, mode) in [("Contents/MacOS/skluzd", 0o755), ("Contents/Library/LaunchDaemons/net.haruni.skluzd.plist", 0o644),
+                             ("Contents/Helpers/skluz", 0o755)] {
             fm.createFile(atPath: bundle.appending(path: file).path(percentEncoded: false), contents: Data(),
                           attributes: [.posixPermissions: mode])
         }
-        for dir in ["", "Contents", "Contents/MacOS", "Contents/Library", "Contents/Library/LaunchDaemons"] {
+        for dir in ["", "Contents", "Contents/MacOS", "Contents/Library", "Contents/Library/LaunchDaemons", "Contents/Helpers"] {
             chmod((dir.isEmpty ? bundle : bundle.appending(path: dir)).path(percentEncoded: false), 0o755)
         }
         return bundle

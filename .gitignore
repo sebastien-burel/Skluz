@@ -57,3 +57,6 @@ Icon
 # Notarization / signature
 *.zip
 ExportOptions.plist
+
+# Coverage output of Debug builds run from the repo
+*.profraw

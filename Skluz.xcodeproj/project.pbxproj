@@ -11,6 +11,8 @@
 		5A5C0C012FD0000100000015 /* SkluzCore in Frameworks */ = {isa = PBXBuildFile; productRef = 5A5C0C012FD0000100000016 /* SkluzCore */; };
 		5A5C0C012FD0000100000021 /* net.haruni.skluzd.plist in Copy LaunchDaemon */ = {isa = PBXBuildFile; fileRef = 5A5C0C012FD0000100000020 /* net.haruni.skluzd.plist */; };
 		5A5C0C012FD0000100000022 /* skluzd in Embed skluzd */ = {isa = PBXBuildFile; fileRef = 5A5C0C012FD0000100000011 /* skluzd */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
+		5A5C0C012FD0000100000035 /* SkluzCore in Frameworks */ = {isa = PBXBuildFile; productRef = 5A5C0C012FD0000100000036 /* SkluzCore */; };
+		5A5C0C012FD000010000003A /* skluz in Embed skluz CLI */ = {isa = PBXBuildFile; fileRef = 5A5C0C012FD0000100000031 /* skluz */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -34,6 +36,13 @@
 			proxyType = 1;
 			remoteGlobalIDString = 5A5C0C012FD0000100000010;
 			remoteInfo = skluzd;
+		};
+		5A5C0C012FD000010000003C /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 32473A152FB8753600D208A0 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 5A5C0C012FD0000100000030;
+			remoteInfo = SkluzCLI;
 		};
 /* End PBXContainerItemProxy section */
 
@@ -60,6 +69,17 @@
 			name = "Embed skluzd";
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		5A5C0C012FD000010000003B /* Embed skluz CLI */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = Contents/Helpers;
+			dstSubfolderSpec = 1;
+			files = (
+				5A5C0C012FD000010000003A /* skluz in Embed skluz CLI */,
+			);
+			name = "Embed skluz CLI";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
@@ -68,6 +88,7 @@
 		32473A342FB8753700D208A0 /* SkluzUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SkluzUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		5A5C0C012FD0000100000011 /* skluzd */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = skluzd; sourceTree = BUILT_PRODUCTS_DIR; };
 		5A5C0C012FD0000100000020 /* net.haruni.skluzd.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = net.haruni.skluzd.plist; sourceTree = "<group>"; };
+		5A5C0C012FD0000100000031 /* skluz */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = skluz; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -89,6 +110,11 @@
 		5A5C0C012FD0000100000012 /* skluzd */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = skluzd;
+			sourceTree = "<group>";
+		};
+		5A5C0C012FD0000100000032 /* SkluzCLI */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = SkluzCLI;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -124,6 +150,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		5A5C0C012FD0000100000034 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5A5C0C012FD0000100000035 /* SkluzCore in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -134,6 +168,7 @@
 				32473A2D2FB8753700D208A0 /* SkluzTests */,
 				32473A372FB8753700D208A0 /* SkluzUITests */,
 				5A5C0C012FD0000100000012 /* skluzd */,
+				5A5C0C012FD0000100000032 /* SkluzCLI */,
 				5A5C0C012FD0000100000027 /* LaunchDaemons */,
 				32473A1E2FB8753600D208A0 /* Products */,
 			);
@@ -146,6 +181,7 @@
 				32473A2A2FB8753700D208A0 /* SkluzTests.xctest */,
 				32473A342FB8753700D208A0 /* SkluzUITests.xctest */,
 				5A5C0C012FD0000100000011 /* skluzd */,
+				5A5C0C012FD0000100000031 /* skluz */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -170,11 +206,13 @@
 				32473A1B2FB8753600D208A0 /* Resources */,
 				5A5C0C012FD0000100000024 /* Embed skluzd */,
 				5A5C0C012FD0000100000023 /* Copy LaunchDaemon */,
+				5A5C0C012FD000010000003B /* Embed skluz CLI */,
 			);
 			buildRules = (
 			);
 			dependencies = (
 				5A5C0C012FD0000100000026 /* PBXTargetDependency */,
+				5A5C0C012FD000010000003D /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				32473A1F2FB8753600D208A0 /* Skluz */,
@@ -255,6 +293,28 @@
 			productReference = 5A5C0C012FD0000100000011 /* skluzd */;
 			productType = "com.apple.product-type.tool";
 		};
+		5A5C0C012FD0000100000030 /* SkluzCLI */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 5A5C0C012FD0000100000037 /* Build configuration list for PBXNativeTarget "SkluzCLI" */;
+			buildPhases = (
+				5A5C0C012FD0000100000033 /* Sources */,
+				5A5C0C012FD0000100000034 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				5A5C0C012FD0000100000032 /* SkluzCLI */,
+			);
+			name = SkluzCLI;
+			packageProductDependencies = (
+				5A5C0C012FD0000100000036 /* SkluzCore */,
+			);
+			productName = SkluzCLI;
+			productReference = 5A5C0C012FD0000100000031 /* skluz */;
+			productType = "com.apple.product-type.tool";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -299,6 +359,7 @@
 				32473A292FB8753700D208A0 /* SkluzTests */,
 				32473A332FB8753700D208A0 /* SkluzUITests */,
 				5A5C0C012FD0000100000010 /* skluzd */,
+				5A5C0C012FD0000100000030 /* SkluzCLI */,
 			);
 		};
 /* End PBXProject section */
@@ -356,6 +417,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		5A5C0C012FD0000100000033 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -373,6 +441,11 @@
 			isa = PBXTargetDependency;
 			target = 5A5C0C012FD0000100000010 /* skluzd */;
 			targetProxy = 5A5C0C012FD0000100000025 /* PBXContainerItemProxy */;
+		};
+		5A5C0C012FD000010000003D /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 5A5C0C012FD0000100000030 /* SkluzCLI */;
+			targetProxy = 5A5C0C012FD000010000003C /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -677,6 +750,46 @@
 			};
 			name = Release;
 		};
+		5A5C0C012FD0000100000038 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CREATE_INFOPLIST_SECTION_IN_BINARY = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 82FW35VV68;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "© 2026 Haruni SAS.";
+				MARKETING_VERSION = 1.0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = net.haruni.skluz.cli;
+				PRODUCT_MODULE_NAME = SkluzCLI;
+				PRODUCT_NAME = skluz;
+				SKIP_INSTALL = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		5A5C0C012FD0000100000039 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CREATE_INFOPLIST_SECTION_IN_BINARY = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 82FW35VV68;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "© 2026 Haruni SAS.";
+				MARKETING_VERSION = 1.0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = net.haruni.skluz.cli;
+				PRODUCT_MODULE_NAME = SkluzCLI;
+				PRODUCT_NAME = skluz;
+				SKIP_INSTALL = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -725,6 +838,15 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
+		5A5C0C012FD0000100000037 /* Build configuration list for PBXNativeTarget "SkluzCLI" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				5A5C0C012FD0000100000038 /* Debug */,
+				5A5C0C012FD0000100000039 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
@@ -740,6 +862,10 @@
 			productName = SkluzCore;
 		};
 		5A5C0C012FD0000100000016 /* SkluzCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = SkluzCore;
+		};
+		5A5C0C012FD0000100000036 /* SkluzCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = SkluzCore;
 		};

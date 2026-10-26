@@ -101,6 +101,12 @@ public final class DaemonClient: @unchecked Sendable {
         }
     }
 
+    public func installCommandLineTool() async throws {
+        try await call { proxy, done in
+            proxy.installCommandLineTool { done(Self.check($0)) }
+        }
+    }
+
     // MARK: - Plumbing
 
     /// Resumes exactly once, from the reply or from the connection error.

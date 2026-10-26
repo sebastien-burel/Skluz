@@ -31,6 +31,12 @@ import Foundation
     /// Adds a key the user confirmed to the daemon's known_hosts. Admins only.
     func trustHostKey(host: String, port: Int, type: String, key: String,
                       reply: @escaping @Sendable (String?) -> Void)
+
+    // MARK: CLI (phase 7)
+
+    /// Points /usr/local/bin/skluz at the CLI inside the installed app. The
+    /// daemon derives the target from its own location. Admins only.
+    func installCommandLineTool(reply: @escaping @Sendable (String?) -> Void)
 }
 
 public enum DaemonAPI {
@@ -92,6 +98,8 @@ public struct TunnelStatus: Codable, Equatable, Sendable {
     public var id: UUID
     public var name: String
     public var localPort: Int
+    /// Disabled tunnels are listed but not expected to run.
+    public var enabled: Bool
     public var phase: Phase
     public var pid: Int32?
     /// Start of the current run, when `up`.
@@ -100,11 +108,12 @@ public struct TunnelStatus: Codable, Equatable, Sendable {
     /// Reconnections since the daemon started.
     public var reconnections: Int
 
-    public init(id: UUID, name: String, localPort: Int, phase: Phase, pid: Int32?, since: Date?,
-                lastError: String?, reconnections: Int) {
+    public init(id: UUID, name: String, localPort: Int, enabled: Bool = true, phase: Phase, pid: Int32?,
+                since: Date?, lastError: String?, reconnections: Int) {
         self.id = id
         self.name = name
         self.localPort = localPort
+        self.enabled = enabled
         self.phase = phase
         self.pid = pid
         self.since = since
@@ -126,7 +135,26 @@ public struct TunnelStatus: Codable, Equatable, Sendable {
         case .failed:        phase = .failed
         case .stopped, nil:  phase = .stopped
         }
-        self.init(id: tunnel.id, name: tunnel.name, localPort: tunnel.localPort, phase: phase,
-                  pid: pid, since: since, lastError: lastError, reconnections: reconnections)
+        self.init(id: tunnel.id, name: tunnel.name, localPort: tunnel.localPort, enabled: tunnel.enabled,
+                  phase: phase, pid: pid, since: since, lastError: lastError, reconnections: reconnections)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, name, localPort, enabled, phase, pid, since, lastError, reconnections
+    }
+
+    /// `enabled` came after phase 4: a daemon that does not send it only
+    /// lists enabled tunnels as running.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id)
+        name = try c.decode(String.self, forKey: .name)
+        localPort = try c.decode(Int.self, forKey: .localPort)
+        enabled = try c.decodeIfPresent(Bool.self, forKey: .enabled) ?? true
+        phase = try c.decode(Phase.self, forKey: .phase)
+        pid = try c.decodeIfPresent(Int32.self, forKey: .pid)
+        since = try c.decodeIfPresent(Date.self, forKey: .since)
+        lastError = try c.decodeIfPresent(String.self, forKey: .lastError)
+        reconnections = try c.decode(Int.self, forKey: .reconnections)
     }
 }

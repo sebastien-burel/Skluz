@@ -15,7 +15,10 @@ public enum InstallationCheck {
         "Contents/MacOS/skluzd",
         "Contents/Library",
         "Contents/Library/LaunchDaemons",
-        "Contents/Library/LaunchDaemons/net.haruni.skluzd.plist"
+        "Contents/Library/LaunchDaemons/net.haruni.skluzd.plist",
+        // Run by admins through /usr/local/bin/skluz.
+        "Contents/Helpers",
+        "Contents/Helpers/skluz"
     ]
 
     public struct Problem: Error, Equatable, Sendable, LocalizedError {
