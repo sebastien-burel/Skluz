@@ -25,7 +25,7 @@ Le code partagé par l'app, le futur daemon `skluzd` et la CLI vit dans le packa
 - **`TunnelConfig`** : modèle unique, avec `mode` (`.session` / `.system`) ; `tunnels.json` en schéma v2, migré depuis la v1 avec sauvegarde `tunnels.v1.json`.
 - **`SSHCommandBuilder`** : validation des champs puis deux politiques (Session = v1 inchangée, Système = liste blanche).
 - **`TunnelStore`** (actor) : persistance JSON + état en mémoire de la liste des tunnels.
-- **`TunnelSupervisor`** (actor, ex-`TunnelRunner`) : cycle de vie des `Process` SSH (start/stop/restart, capture stderr → `LogStore`, `RestartPolicy` par mode, réaction réseau via `NetworkMonitor` en mode Système). Ses effets de bord (exécutable ssh, horloge, `sleep`, aléa) passent par `Environment` : `.live` en production, injecté seulement par les tests (faux ssh).
+- **`TunnelSupervisor`** (actor, ex-`TunnelRunner`) : cycle de vie des `Process` SSH (start/stop/restart, capture stderr → `LogStore`, `RestartPolicy` par mode, réaction réseau via `NetworkMonitor` en mode Système). Ses effets de bord (exécutable ssh, horloge, `sleep`, aléa) passent par `Environment` : `.live` en production, injecté seulement par les tests. Les faux ssh des tests tournent en `/bin/sh <script>` (`leadingArguments`), jamais comme exécutables neufs : macOS peut suspendre indéfiniment à `_dyld_start` un exécutable tout juste écrit.
 
 L'app (`Skluz/`) garde l'UI, `SSHConfigParser`, `TunnelTester`, `LaunchAtLoginManager` et `DaemonManager` (`SMAppService.daemon`, refuse d'enregistrer hors de `/Applications/Skluz.app`). Le build de l'app embarque `skluzd` dans `Contents/MacOS/` et `LaunchDaemons/net.haruni.skluzd.plist` dans `Contents/Library/LaunchDaemons/` (phases Copy Files) ; `Tools/release.sh` vérifie leur présence et leur signature.
 
@@ -74,7 +74,8 @@ Ces points sont des sources de bugs subtils ou de failles de sécurité — tout
 - Clé passée par `-o IdentityFile="…"`, **jamais `-i`** (un `-i` absent fait retomber ssh sur les clés de root) ; chemins de `UserKnownHostsFile`/`IdentityFile` **entre guillemets** (ssh coupe sur les espaces).
 - **Seul stockage de secrets du projet, assumé** : clés privées dédiées **sans passphrase** dans `/Library/Application Support/Skluz/keys/` (`600 root:wheel`), compensées par une ligne `authorized_keys` restreinte côté serveur (`restrict,port-forwarding,permitopen=…,command="/bin/false"` : sans `command=`, `restrict` laisse la clé exécuter des commandes).
 - Fichiers root refusés s'ils n'appartiennent pas à root, sont trop ouverts ou sont des liens symboliques — le daemon reste vivant et expose l'erreur, il ne corrige jamais seul.
-- XPC : requirement de signature Team `82FW35VV68` **avec les identifiants entre parenthèses** ; appels de mutation réservés au groupe `admin`.
+- XPC : requirement de signature Team `82FW35VV68` **avec les identifiants entre parenthèses** ; appels de mutation et `fetchHostKey` réservés au groupe `admin`.
+- **App installée au nom de root** : launchd ne vérifie que la signature d'équipe de `skluzd` ; un bundle modifiable par l'utilisateur permettrait d'y glisser un autre `skluzd` signé (ancienne version) lancé en root. `DaemonManager` refuse donc l'activation tant que `InstallationCheck` signale un problème (`sudo chown -R root:wheel /Applications/Skluz.app && sudo chmod -R go-w /Applications/Skluz.app`).
 
 ## Tests minimaux attendus
 
