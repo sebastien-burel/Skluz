@@ -80,13 +80,15 @@ struct PreferencesView: View {
                             Button("Désactiver") { runDaemonAction(DaemonManager.unregister) }
                         default:
                             Button("Activer") { runDaemonAction(DaemonManager.register) }
-                                .disabled(!DaemonManager.isInstalledInApplications)
                         }
                         if daemonStatus == .requiresApproval {
                             Button("Ouvrir les réglages") { DaemonManager.openSettings() }
                         }
                     }
                     .controlSize(.small)
+                    // The service is tied to the bundle ID, not the location:
+                    // only the installed copy may manage it.
+                    .disabled(!DaemonManager.isInstalledInApplications)
 
                     if let daemonError {
                         Text(daemonError)

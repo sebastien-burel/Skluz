@@ -41,6 +41,7 @@ enum DaemonManager {
     }
 
     static func unregister() throws {
+        guard isInstalledInApplications else { throw Failure.notInApplications }
         try service.unregister()
     }
 
