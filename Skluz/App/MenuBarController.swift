@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import SkluzCore
 
 final class MenuBarController: NSObject, NSPopoverDelegate {
     private let statusItem: NSStatusItem
@@ -7,11 +8,16 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
     private var isSheetOpen = false
     nonisolated(unsafe) private var outsideClickMonitor: Any?
 
-    init(viewModel: TunnelsViewModel) {
+    private let viewModel: TunnelsViewModel
+    private let system: SystemTunnelsModel
+
+    init(viewModel: TunnelsViewModel, system: SystemTunnelsModel) {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         popover = NSPopover()
+        self.viewModel = viewModel
+        self.system = system
         super.init()
-        configurePopover(viewModel: viewModel)
+        configurePopover()
         configureButton()
     }
 
@@ -21,17 +27,20 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
         }
     }
 
-    private func configurePopover(viewModel: TunnelsViewModel) {
+    private func configurePopover() {
         popover.behavior = .transient
         popover.animates = true
         popover.delegate = self
-        let root = MenuBarPopoverView(viewModel: viewModel) { [weak self] isOpen in
+        let root = MenuBarPopoverView(viewModel: viewModel, system: system) { [weak self] isOpen in
             self?.isSheetOpen = isOpen
         }
         popover.contentViewController = NSHostingController(rootView: root)
 
-        viewModel.onStatusChange = { [weak self] status in
-            self?.applyStatus(status)
+        viewModel.onStatusChange = { [weak self] _ in
+            self?.refreshStatus()
+        }
+        system.onChange = { [weak self] in
+            self?.refreshStatus()
         }
     }
 
@@ -42,7 +51,12 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
         button.action = #selector(togglePopover(_:))
     }
 
-    private func applyStatus(_ status: MenuBarIconStatus) {
+    /// Session and System tunnels share the badge: a failure anywhere wins.
+    private func refreshStatus() {
+        let status = MenuBarIconStatus.combined(viewModel.aggregateStatus,
+                                                system: system.tunnels.compactMap { tunnel in
+            tunnel.enabled ? system.status(for: tunnel.id)?.phase : nil
+        })
         statusItem.button?.image = MenuBarIcon.image(status: status)
     }
 

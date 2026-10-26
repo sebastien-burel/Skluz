@@ -3,6 +3,8 @@ import ServiceManagement
 import SkluzCore
 
 struct PreferencesView: View {
+    let system: SystemTunnelsModel
+    var onOpenMigration: () -> Void = {}
     @State private var status: SMAppService.Status = LaunchAtLoginManager.status
     @State private var errorMessage: String?
     @State private var daemonStatus: SMAppService.Status = DaemonManager.status
@@ -58,6 +60,16 @@ struct PreferencesView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     LabeledContent("État", value: DaemonManager.describe(daemonStatus))
+                    if let daemonVersion = system.status?.version {
+                        LabeledContent("Version du service") {
+                            if daemonVersion == shortVersion {
+                                Text(daemonVersion)
+                            } else {
+                                Text("\(daemonVersion) — différente de l'app (\(shortVersion)) : désactivez puis réactivez le service.")
+                                    .foregroundStyle(.orange)
+                            }
+                        }
+                    }
 
                     if !DaemonManager.isInstalledInApplications {
                         Label(DaemonManager.Failure.notInApplications.localizedDescription,
@@ -111,6 +123,15 @@ struct PreferencesView: View {
                             .font(.caption)
                             .foregroundStyle(.red)
                     }
+
+                    if daemonStatus == .enabled {
+                        Button("Passer des tunnels en mode Système…") {
+                            dismiss()
+                            onOpenMigration()
+                        }
+                        .controlSize(.small)
+                        .disabled(!system.canManage)
+                    }
                 }
 
                 Section {
@@ -153,6 +174,10 @@ struct PreferencesView: View {
         daemonStatus = DaemonManager.status
     }
 
+    private var shortVersion: String {
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
+    }
+
     private var appVersion: String {
         let short = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
         let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?"
@@ -161,5 +186,5 @@ struct PreferencesView: View {
 }
 
 #Preview {
-    PreferencesView()
+    PreferencesView(system: SystemTunnelsModel())
 }

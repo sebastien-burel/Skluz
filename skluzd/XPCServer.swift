@@ -1,6 +1,5 @@
 import Foundation
 import Darwin
-import Darwin.membership
 import SkluzCore
 
 /// Accepts XPC clients signed by the team (`DaemonAPI.clientRequirement`)
@@ -235,20 +234,6 @@ final class DaemonService: NSObject, SkluzDaemonProtocol, @unchecked Sendable {
     }
 
     static func isAdmin(uid: uid_t) -> Bool {
-        if uid == 0 { return true }
-        guard let group = getgrnam("admin") else { return false }
-        var userUUID = UUID().uuid
-        var groupUUID = UUID().uuid
-        var isMember: Int32 = 0
-        let ok = withUnsafeMutableBytes(of: &userUUID) { user in
-            withUnsafeMutableBytes(of: &groupUUID) { grp in
-                let u = user.baseAddress!.assumingMemoryBound(to: UInt8.self)
-                let g = grp.baseAddress!.assumingMemoryBound(to: UInt8.self)
-                return mbr_uid_to_uuid(uid, u) == 0
-                    && mbr_gid_to_uuid(group.pointee.gr_gid, g) == 0
-                    && mbr_check_membership(u, g, &isMember) == 0
-            }
-        }
-        return ok && isMember != 0
+        AdminCheck.isAdmin(uid: uid)
     }
 }

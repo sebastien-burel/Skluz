@@ -68,3 +68,10 @@ struct RestartPolicyTests {
         #expect(RestartPolicy.nextAttempt(previous: 0, uptime: 0.4) == 1)
     }
 }
+
+struct AdminCheckTests {
+    @Test func rootIsAdminAndNobodyIsNot() {
+        #expect(AdminCheck.isAdmin(uid: 0))
+        #expect(!AdminCheck.isAdmin(uid: uid_t(UInt32(bitPattern: -2))))
+    }
+}

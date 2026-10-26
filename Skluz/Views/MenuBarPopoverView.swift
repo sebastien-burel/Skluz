@@ -3,21 +3,27 @@ import SkluzCore
 
 struct MenuBarPopoverView: View {
     let viewModel: TunnelsViewModel
+    let system: SystemTunnelsModel
     var onSheetPresentationChange: (Bool) -> Void = { _ in }
     @State private var activeSheet: ActiveSheet?
 
     enum ActiveSheet: Identifiable {
         case create
         case edit(TunnelConfig)
+        /// A Session tunnel opened in System mode, from the migration assistant.
+        case convert(TunnelConfig)
         case logs(TunnelConfig)
         case preferences
+        case migration
 
         var id: String {
             switch self {
             case .create: "create"
             case .edit(let tunnel): "edit-\(tunnel.id.uuidString)"
+            case .convert(let tunnel): "convert-\(tunnel.id.uuidString)"
             case .logs(let tunnel): "logs-\(tunnel.id.uuidString)"
             case .preferences: "preferences"
+            case .migration: "migration"
             }
         }
     }
@@ -26,6 +32,10 @@ struct MenuBarPopoverView: View {
         VStack(spacing: 0) {
             header
             Divider()
+            if let problem = system.status?.configProblem {
+                configProblemBanner(problem)
+                Divider()
+            }
             content
             Divider()
             footer
@@ -43,28 +53,55 @@ struct MenuBarPopoverView: View {
     private func view(for sheet: ActiveSheet) -> some View {
         switch sheet {
         case .create:
-            TunnelEditorView(
-                initial: nil,
-                configHosts: viewModel.configHosts,
-                onSave: { tunnel in Task { await viewModel.upsert(tunnel) } },
-                onTest: { await viewModel.test($0) }
-            )
+            editor(for: nil)
         case .edit(let tunnel):
-            TunnelEditorView(
-                initial: tunnel,
-                configHosts: viewModel.configHosts,
-                onSave: { saved in
-                    Task { await viewModel.upsert(saved) }
-                },
-                onTest: { await viewModel.test($0) },
-                onDelete: { id in
-                    Task { await viewModel.remove(id: id) }
-                }
-            )
+            editor(for: tunnel)
+        case .convert(let tunnel):
+            editor(for: tunnel, mode: .system)
         case .logs(let tunnel):
             LogViewerView(tunnel: tunnel, viewModel: viewModel)
         case .preferences:
-            PreferencesView()
+            PreferencesView(system: system) { activeSheet = .migration }
+        case .migration:
+            MigrationView(sessionTunnels: viewModel.tunnels, system: system) { tunnel in
+                activeSheet = .convert(tunnel)
+            }
+        }
+    }
+
+    private func editor(for tunnel: TunnelConfig?, mode: TunnelMode? = nil) -> some View {
+        TunnelEditorView(
+            initial: tunnel,
+            initialMode: mode,
+            configHosts: viewModel.configHosts,
+            system: system,
+            onSave: { saved in try await save(saved, replacing: tunnel) },
+            onTest: { await viewModel.test($0) },
+            onDelete: tunnel.map { original in
+                { _ in Task { await delete(original) } }
+            }
+        )
+    }
+
+    /// A mode change moves the tunnel between the user file and the daemon.
+    private func save(_ tunnel: TunnelConfig, replacing previous: TunnelConfig?) async throws {
+        switch (previous?.mode, tunnel.mode) {
+        case (.session?, .system):
+            try await viewModel.handOverToSystem(tunnel) { try await system.upsert(tunnel) }
+        case (_, .system):
+            try await system.upsert(tunnel)
+        case (.system?, .session):
+            try await system.delete(id: tunnel.id)
+            await viewModel.upsert(tunnel)
+        case (_, .session):
+            await viewModel.upsert(tunnel)
+        }
+    }
+
+    private func delete(_ tunnel: TunnelConfig) async {
+        switch tunnel.mode {
+        case .system:  try? await system.delete(id: tunnel.id)
+        case .session: await viewModel.remove(id: tunnel.id)
         }
     }
 
@@ -84,9 +121,20 @@ struct MenuBarPopoverView: View {
         .padding(.vertical, 8)
     }
 
+    private func configProblemBanner(_ problem: String) -> some View {
+        Label("Service système : configuration refusée, aucun tunnel Système lancé. \(problem)",
+              systemImage: "exclamationmark.octagon.fill")
+            .font(.caption)
+            .foregroundStyle(.red)
+            .textSelection(.enabled)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+    }
+
     @ViewBuilder
     private var content: some View {
-        if viewModel.tunnels.isEmpty {
+        if viewModel.tunnels.isEmpty && system.tunnels.isEmpty {
             emptyState
         } else {
             tunnelList
@@ -106,9 +154,30 @@ struct MenuBarPopoverView: View {
         .padding(.horizontal, 12)
     }
 
+    /// Without System tunnels the list is exactly the Session list of v1.
     private var tunnelList: some View {
         ScrollView {
             VStack(spacing: 0) {
+                if !system.tunnels.isEmpty {
+                    sectionHeader("Système — sans ouverture de session")
+                    ForEach(Array(system.tunnels.enumerated()), id: \.element.id) { index, tunnel in
+                        SystemTunnelRowView(
+                            tunnel: tunnel,
+                            status: system.status(for: tunnel.id),
+                            canManage: system.canManage,
+                            onToggleEnabled: {
+                                Task { try? await system.setEnabled(id: tunnel.id, !tunnel.enabled) }
+                            },
+                            onEdit: { activeSheet = .edit(tunnel) }
+                        )
+                        if index < system.tunnels.count - 1 {
+                            Divider().padding(.leading, 12)
+                        }
+                    }
+                    if !viewModel.tunnels.isEmpty {
+                        sectionHeader("Session")
+                    }
+                }
                 ForEach(Array(viewModel.tunnels.enumerated()), id: \.element.id) { index, tunnel in
                     let state = viewModel.states[tunnel.id] ?? .stopped
                     TunnelRowView(
@@ -125,6 +194,16 @@ struct MenuBarPopoverView: View {
             }
         }
         .frame(maxHeight: 400)
+    }
+
+    private func sectionHeader(_ title: String) -> some View {
+        Text(title)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 12)
+            .padding(.top, 8)
+            .padding(.bottom, 2)
     }
 
     private var footer: some View {

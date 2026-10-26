@@ -12,6 +12,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         configParser: configParser,
         logStore: logStore
     )
+    private let systemModel = SystemTunnelsModel()
     private var menuBarController: MenuBarController?
 
     /// Unit tests are hosted in the app: the real startup would load the
@@ -22,7 +23,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         guard !Self.isHostingTests else { return }
-        menuBarController = MenuBarController(viewModel: viewModel)
+        menuBarController = MenuBarController(viewModel: viewModel, system: systemModel)
+        systemModel.startPolling()
         Task { [viewModel] in
             await viewModel.load()
         }

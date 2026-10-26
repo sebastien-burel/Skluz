@@ -1,10 +1,31 @@
 import AppKit
+import SkluzCore
 
 enum MenuBarIconStatus: Equatable {
     case neutral        // tous arrêtés
     case running        // au moins un running, aucun échec
     case reconnecting   // au moins un en reconnexion, aucun échec
     case failed         // au moins un échec (priorité max)
+}
+
+extension MenuBarIconStatus {
+    /// Adds the phases of the enabled System tunnels to the Session status.
+    static func combined(_ session: MenuBarIconStatus, system phases: [TunnelStatus.Phase]) -> MenuBarIconStatus {
+        var result = session
+        for phase in phases {
+            switch phase {
+            case .failed, .hostKeyUnknown, .hostKeyChanged:
+                return .failed
+            case .reconnecting:
+                if result != .failed { result = .reconnecting }
+            case .up, .starting:
+                if result == .neutral { result = .running }
+            case .stopped:
+                break
+            }
+        }
+        return result
+    }
 }
 
 /// Icône menubar « écluse » : glyphe template (asset MenuBarIcon, fond

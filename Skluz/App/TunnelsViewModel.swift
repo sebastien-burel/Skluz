@@ -117,4 +117,12 @@ final class TunnelsViewModel {
     func stopTunnel(id: UUID) {
         Task { [runner] in await runner.stop(id: id) }
     }
+
+    /// Moves a Session tunnel to the daemon: stopped first so its local port
+    /// is free, then removed from the user file once the daemon accepted it.
+    func handOverToSystem(_ tunnel: TunnelConfig, upsert: () async throws -> Void) async throws {
+        await runner.stop(id: tunnel.id)
+        try await upsert()
+        await remove(id: tunnel.id)
+    }
 }
