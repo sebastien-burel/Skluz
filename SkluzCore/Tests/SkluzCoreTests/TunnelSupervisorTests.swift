@@ -249,6 +249,19 @@ struct TunnelSupervisorTests {
         h.observer.cancel()
     }
 
+    /// ssh exits 0 when killed with SIGTERM: the reason must still be kept.
+    @Test func cleanExitStillRecordsAReason() async throws {
+        let h = try makeHarness(script: "exit 0", sleep: .hang)
+        let tunnel = systemTunnel()
+        await h.supervisor.start(tunnel)
+        try await waitUntil { h.recorder.delays.count == 1 }
+
+        let reason = await h.supervisor.lastFailure(for: tunnel.id)
+        #expect(reason?.contains("code 0") == true)
+        await h.supervisor.stop(id: tunnel.id)
+        h.observer.cancel()
+    }
+
     // MARK: - Validation and auto-start
 
     @Test func invalidTunnelFailsWithoutSpawning() async throws {

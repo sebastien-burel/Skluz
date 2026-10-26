@@ -205,13 +205,13 @@ Skluz.app/
 **Tâches**
 - Mise à jour : au lancement, l'app compare `version()` du daemon à sa propre version. En cas d'écart, elle fait `unregister()` puis `register()`, ou demande au daemon de se terminer pour que launchd relance le nouveau binaire.
 - Désinstallation : un bouton « Supprimer le service système » fait `unregister()`. Une option supprime aussi `/Library/Application Support/Skluz/` après confirmation.
-- Ajouter à `docs/` une page `SKLUZD.md` : fonctionnement, prérequis d'installation (Skluz dans `/Applications`, compte admin, une session VNC unique pour l'approbation initiale, déverrouillage FileVault par SSH), emplacements des fichiers, commandes de diagnostic (`skluz status`, `sudo launchctl print system/net.haruni.skluzd`, `log show --last boot --predicate 'subsystem == "net.haruni.skluzd"'`).
+- Ajouter à `docs/` une page `SKLUZD.md` (commandes `log` à écrire `/usr/bin/log` : sous zsh, `log` est une commande interne) : fonctionnement, prérequis d'installation (Skluz dans `/Applications`, compte admin, une session VNC unique pour l'approbation initiale, déverrouillage FileVault par SSH), emplacements des fichiers, commandes de diagnostic (`skluz status`, `sudo launchctl print system/net.haruni.skluzd`, `log show --last boot --predicate 'subsystem == "net.haruni.skluzd"'`).
 
 **PASS — test de référence sur le Mac mini**
 1. FileVault actif, au moins 2 tunnels en mode Système.
 2. `sudo reboot`.
 3. Déverrouillage FileVault par SSH, **sans aucune connexion VNC**.
-4. En moins de 60 s : `skluz check` renvoie `0` et `lsof -nP -iTCP -sTCP:LISTEN | grep ssh` liste les ports attendus.
+4. En moins de 60 s : `skluz check` renvoie `0` et `sudo lsof -nP -iTCP -sTCP:LISTEN | grep ssh` liste les ports attendus (sans `sudo`, `lsof` ne montre pas les ssh de root).
 5. `who | grep console` est vide, ce qui confirme qu'aucune session n'est ouverte.
 6. Après installation d'une version N+1 de l'app, `skluz status` reporte la nouvelle version du daemon sans redémarrage du Mac.
 7. Après désactivation du service, `launchctl print system/net.haruni.skluzd` échoue et plus aucun `ssh` du daemon ne tourne.

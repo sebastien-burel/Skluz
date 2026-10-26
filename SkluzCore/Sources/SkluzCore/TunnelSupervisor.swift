@@ -335,9 +335,9 @@ public actor TunnelSupervisor {
             spawn(tunnel)
             return
         }
-        if exitCode != 0 {
-            lastFailures[id] = reason
-        }
+        // Any exit we did not ask for, even with status 0: ssh exits 0 on
+        // SIGTERM, so an external kill would otherwise leave no trace.
+        lastFailures[id] = reason
         guard RestartPolicy.shouldRestart(mode: tunnel.mode, autoRestart: tunnel.autoRestart, exitCode: exitCode) else {
             emit(exitCode == 0 ? .stopped : .failed(reason: reason, at: environment.now()), for: id)
             return
@@ -461,6 +461,9 @@ public actor TunnelSupervisor {
         }
         if exitCode == 255 {
             return "ssh a échoué (code 255) — port local occupé, host inaccessible ou clé refusée."
+        }
+        if exitCode == 0 {
+            return "ssh s'est arrêté sans erreur (code 0) — processus tué ou connexion fermée par le serveur."
         }
         return "ssh sortie avec code \(exitCode)."
     }
