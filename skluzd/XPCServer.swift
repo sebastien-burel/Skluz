@@ -8,6 +8,14 @@ final class XPCServer: NSObject, NSXPCListenerDelegate, @unchecked Sendable {
     private let listener = NSXPCListener(machServiceName: DaemonAPI.machServiceName)
     private let daemon: Daemon
 
+    /// A release daemon only talks to Developer ID builds; a debug one, run
+    /// during development, also accepts Apple Development builds.
+    #if DEBUG
+    static let developerIDOnly = false
+    #else
+    static let developerIDOnly = true
+    #endif
+
     init(daemon: Daemon) {
         self.daemon = daemon
         super.init()
@@ -22,7 +30,7 @@ final class XPCServer: NSObject, NSXPCListenerDelegate, @unchecked Sendable {
     func listener(_ listener: NSXPCListener, shouldAcceptNewConnection connection: NSXPCConnection) -> Bool {
         // Checked by the system on every message, against the audit token
         // of the peer: a client that fails it is invalidated.
-        connection.setCodeSigningRequirement(DaemonAPI.clientRequirement)
+        connection.setCodeSigningRequirement(DaemonAPI.clientRequirement(developerIDOnly: Self.developerIDOnly))
         let uid = connection.effectiveUserIdentifier
         let pid = connection.processIdentifier
         connection.exportedInterface = DaemonAPI.makeInterface()

@@ -55,9 +55,20 @@ public enum DaemonAPI {
     /// What the daemon demands from its clients. The parentheses matter:
     /// `and` binds tighter than `or`, and without them any binary, even
     /// ad hoc signed, declaring the CLI identifier would be accepted.
-    public static let clientRequirement =
-        "anchor apple generic and certificate leaf[subject.OU] = \"82FW35VV68\""
-        + " and (identifier \"net.haruni.skluz\" or identifier \"net.haruni.skluz.cli\")"
+    ///
+    /// `developerIDOnly` (release daemons) also requires a Developer ID
+    /// certificate: Apple Development builds carry `get-task-allow`, so any
+    /// process of the user could attach to one and drive the daemon through
+    /// it (security review, finding 2).
+    public static func clientRequirement(developerIDOnly: Bool) -> String {
+        let certificate = developerIDOnly
+            ? " and certificate 1[field.1.2.840.113635.100.6.2.6] exists"
+                + " and certificate leaf[field.1.2.840.113635.100.6.1.13] exists"
+            : ""
+        return "anchor apple generic" + certificate
+            + " and certificate leaf[subject.OU] = \"82FW35VV68\""
+            + " and (identifier \"net.haruni.skluz\" or identifier \"net.haruni.skluz.cli\")"
+    }
 
     /// What clients demand from the daemon.
     public static let daemonRequirement =

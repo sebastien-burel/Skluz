@@ -75,3 +75,17 @@ struct AdminCheckTests {
         #expect(!AdminCheck.isAdmin(uid: uid_t(UInt32(bitPattern: -2))))
     }
 }
+
+struct ClientRequirementTests {
+    /// Checked with codesign against real binaries during phase 8: the
+    /// Developer ID form refuses Apple Development (get-task-allow) builds.
+    @Test func developerIDFormAddsTheCertificateMarkers() {
+        let release = DaemonAPI.clientRequirement(developerIDOnly: true)
+        let debug = DaemonAPI.clientRequirement(developerIDOnly: false)
+        #expect(release.contains("field.1.2.840.113635.100.6.1.13"))
+        #expect(!debug.contains("field.1.2.840.113635.100.6.1.13"))
+        for requirement in [release, debug] {
+            #expect(requirement.hasSuffix(#"and (identifier "net.haruni.skluz" or identifier "net.haruni.skluz.cli")"#))
+        }
+    }
+}
