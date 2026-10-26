@@ -9,6 +9,8 @@
 /* Begin PBXBuildFile section */
 		5A5C0C012FD0000100000003 /* SkluzCore in Frameworks */ = {isa = PBXBuildFile; productRef = 5A5C0C012FD0000100000002 /* SkluzCore */; };
 		5A5C0C012FD0000100000015 /* SkluzCore in Frameworks */ = {isa = PBXBuildFile; productRef = 5A5C0C012FD0000100000016 /* SkluzCore */; };
+		5A5C0C012FD0000100000021 /* net.haruni.skluzd.plist in Copy LaunchDaemon */ = {isa = PBXBuildFile; fileRef = 5A5C0C012FD0000100000020 /* net.haruni.skluzd.plist */; };
+		5A5C0C012FD0000100000022 /* skluzd in Embed skluzd */ = {isa = PBXBuildFile; fileRef = 5A5C0C012FD0000100000011 /* skluzd */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -26,13 +28,46 @@
 			remoteGlobalIDString = 32473A1C2FB8753600D208A0;
 			remoteInfo = Skluz;
 		};
+		5A5C0C012FD0000100000025 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 32473A152FB8753600D208A0 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 5A5C0C012FD0000100000010;
+			remoteInfo = skluzd;
+		};
 /* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		5A5C0C012FD0000100000023 /* Copy LaunchDaemon */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = Contents/Library/LaunchDaemons;
+			dstSubfolderSpec = 1;
+			files = (
+				5A5C0C012FD0000100000021 /* net.haruni.skluzd.plist in Copy LaunchDaemon */,
+			);
+			name = "Copy LaunchDaemon";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5A5C0C012FD0000100000024 /* Embed skluzd */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 6;
+			files = (
+				5A5C0C012FD0000100000022 /* skluzd in Embed skluzd */,
+			);
+			name = "Embed skluzd";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		32473A1D2FB8753600D208A0 /* Skluz.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Skluz.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		32473A2A2FB8753700D208A0 /* SkluzTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SkluzTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		32473A342FB8753700D208A0 /* SkluzUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SkluzUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		5A5C0C012FD0000100000011 /* skluzd */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = skluzd; sourceTree = BUILT_PRODUCTS_DIR; };
+		5A5C0C012FD0000100000020 /* net.haruni.skluzd.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = net.haruni.skluzd.plist; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -99,6 +134,7 @@
 				32473A2D2FB8753700D208A0 /* SkluzTests */,
 				32473A372FB8753700D208A0 /* SkluzUITests */,
 				5A5C0C012FD0000100000012 /* skluzd */,
+				5A5C0C012FD0000100000027 /* LaunchDaemons */,
 				32473A1E2FB8753600D208A0 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -114,6 +150,14 @@
 			name = Products;
 			sourceTree = "<group>";
 		};
+		5A5C0C012FD0000100000027 /* LaunchDaemons */ = {
+			isa = PBXGroup;
+			children = (
+				5A5C0C012FD0000100000020 /* net.haruni.skluzd.plist */,
+			);
+			path = LaunchDaemons;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -124,10 +168,13 @@
 				32473A192FB8753600D208A0 /* Sources */,
 				32473A1A2FB8753600D208A0 /* Frameworks */,
 				32473A1B2FB8753600D208A0 /* Resources */,
+				5A5C0C012FD0000100000024 /* Embed skluzd */,
+				5A5C0C012FD0000100000023 /* Copy LaunchDaemon */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				5A5C0C012FD0000100000026 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				32473A1F2FB8753600D208A0 /* Skluz */,
@@ -321,6 +368,11 @@
 			isa = PBXTargetDependency;
 			target = 32473A1C2FB8753600D208A0 /* Skluz */;
 			targetProxy = 32473A352FB8753700D208A0 /* PBXContainerItemProxy */;
+		};
+		5A5C0C012FD0000100000026 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 5A5C0C012FD0000100000010 /* skluzd */;
+			targetProxy = 5A5C0C012FD0000100000025 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 

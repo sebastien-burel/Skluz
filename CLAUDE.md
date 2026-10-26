@@ -27,7 +27,7 @@ Le code partagé par l'app, le futur daemon `skluzd` et la CLI vit dans le packa
 - **`TunnelStore`** (actor) : persistance JSON + état en mémoire de la liste des tunnels.
 - **`TunnelSupervisor`** (actor, ex-`TunnelRunner`) : cycle de vie des `Process` SSH (start/stop/restart, capture stderr → `LogStore`, `RestartPolicy` par mode, réaction réseau via `NetworkMonitor` en mode Système). Ses effets de bord (exécutable ssh, horloge, `sleep`, aléa) passent par `Environment` : `.live` en production, injecté seulement par les tests (faux ssh).
 
-L'app (`Skluz/`) garde l'UI, `SSHConfigParser`, `TunnelTester` et `LaunchAtLoginManager`.
+L'app (`Skluz/`) garde l'UI, `SSHConfigParser`, `TunnelTester`, `LaunchAtLoginManager` et `DaemonManager` (`SMAppService.daemon`, refuse d'enregistrer hors de `/Applications/Skluz.app`). Le build de l'app embarque `skluzd` dans `Contents/MacOS/` et `LaunchDaemons/net.haruni.skluzd.plist` dans `Contents/Library/LaunchDaemons/` (phases Copy Files) ; `Tools/release.sh` vérifie leur présence et leur signature.
 
 Le daemon (`skluzd/`, cible outil `net.haruni.skluzd`) : `main.swift` (arguments, signaux `SIGTERM`/`SIGINT`/`SIGHUP`), `Daemon` (actor : `SystemLayout.loadTunnels` puis `TunnelReconciler`), `Log` (`os.Logger`, subsystem `net.haruni.skluzd`, recopié sur stderr dans un terminal). `--base-dir` n'existe que pour le développement et est **refusé en root**.
 

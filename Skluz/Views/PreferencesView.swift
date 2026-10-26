@@ -4,6 +4,8 @@ import ServiceManagement
 struct PreferencesView: View {
     @State private var status: SMAppService.Status = LaunchAtLoginManager.status
     @State private var errorMessage: String?
+    @State private var daemonStatus: SMAppService.Status = DaemonManager.status
+    @State private var daemonError: String?
     @Environment(\.dismiss) private var dismiss
 
     private var launchAtLogin: Binding<Bool> {
@@ -49,6 +51,50 @@ struct PreferencesView: View {
                     }
                 }
 
+                Section("Service système (sans ouverture de session)") {
+                    Text("Ouvre les tunnels Système dès le démarrage du Mac, même sans session ouverte.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    LabeledContent("État", value: DaemonManager.describe(daemonStatus))
+
+                    if !DaemonManager.isInstalledInApplications {
+                        Label(DaemonManager.Failure.notInApplications.localizedDescription,
+                              systemImage: "exclamationmark.triangle")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                    }
+
+                    if daemonStatus == .requiresApproval {
+                        Label(
+                            "Autorisez « Skluz » dans Réglages Système → Général → Ouverture et extensions → "
+                                + "Autoriser en arrière-plan.",
+                            systemImage: "exclamationmark.triangle"
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                    }
+
+                    HStack {
+                        switch daemonStatus {
+                        case .enabled, .requiresApproval:
+                            Button("Désactiver") { runDaemonAction(DaemonManager.unregister) }
+                        default:
+                            Button("Activer") { runDaemonAction(DaemonManager.register) }
+                                .disabled(!DaemonManager.isInstalledInApplications)
+                        }
+                        if daemonStatus == .requiresApproval {
+                            Button("Ouvrir les réglages") { DaemonManager.openSettings() }
+                        }
+                    }
+                    .controlSize(.small)
+
+                    if let daemonError {
+                        Text(daemonError)
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    }
+                }
+
                 Section {
                     LabeledContent("Version", value: appVersion)
                     LabeledContent("Éditeur", value: "Haruni SAS")
@@ -67,8 +113,25 @@ struct PreferencesView: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
         }
-        .frame(minWidth: 420, minHeight: 280)
+        .frame(minWidth: 420, minHeight: 440)
         .onAppear { status = LaunchAtLoginManager.status }
+        .task {
+            // The approval happens in System Settings: keep the status fresh.
+            while !Task.isCancelled {
+                daemonStatus = DaemonManager.status
+                try? await Task.sleep(for: .seconds(2))
+            }
+        }
+    }
+
+    private func runDaemonAction(_ action: () throws -> Void) {
+        do {
+            try action()
+            daemonError = nil
+        } catch {
+            daemonError = "Échec : \(error.localizedDescription)"
+        }
+        daemonStatus = DaemonManager.status
     }
 
     private var appVersion: String {

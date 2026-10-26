@@ -133,6 +133,19 @@ case "$SIGINFO" in
 esac
 echo "  ok: Developer ID, hardened runtime, no debug artifacts"
 
+# The root daemon ships inside the app (PLAN_SKLUZD.md phase 3): it must be
+# there, next to its launchd plist, and signed like the app.
+DAEMON="$APP/Contents/MacOS/skluzd"
+[ -x "$DAEMON" ] || fail "skluzd is missing from $APP/Contents/MacOS"
+[ -f "$APP/Contents/Library/LaunchDaemons/net.haruni.skluzd.plist" ] \
+  || fail "the skluzd launchd plist is missing from the app"
+DAEMON_SIGINFO="$(codesign -d --verbose=2 "$DAEMON" 2>&1)"
+case "$DAEMON_SIGINFO" in
+  *"Authority=Developer ID Application"*"flags="*runtime*|*"flags="*runtime*"Authority=Developer ID Application"*) ;;
+  *) fail "skluzd is not signed with Developer ID and the hardened runtime" ;;
+esac
+echo "  ok: skluzd embedded and signed"
+
 # --- Notarize the app ------------------------------------------------------
 # Two passes on purpose. Stapling the DMG alone leaves the app WITHOUT a ticket
 # once dragged out, so Gatekeeper falls back to an online check — which fails
