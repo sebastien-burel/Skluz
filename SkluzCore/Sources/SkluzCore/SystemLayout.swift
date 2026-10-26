@@ -114,15 +114,20 @@ public enum SystemLayout {
         }
     }
 
-    /// Atomically replaces the tunnels file. `Data.write(.atomic)` would create
-    /// the new file with the umask (644): the temporary file is created 600
-    /// and owned like the original before the rename.
+    /// Atomically replaces the tunnels file, kept 600.
     public static func saveTunnels(_ tunnels: [TunnelConfig], _ paths: SystemPaths,
                                    ownership: FileOwnership) throws {
-        let data = try TunnelStore.encode(tunnels)
-        let path = paths.tunnelsFile.path(percentEncoded: false)
+        try writeFile(TunnelStore.encode(tunnels), to: paths.tunnelsFile, mode: 0o600, ownership: ownership)
+    }
+
+    /// Atomically replaces `url`. `Data.write(.atomic)` would create the new
+    /// file with the umask (644): the temporary file is created with `mode`
+    /// and owned like the daemon files before the rename, which also replaces
+    /// a symlink instead of writing through it.
+    public static func writeFile(_ data: Data, to url: URL, mode: mode_t, ownership: FileOwnership) throws {
+        let path = url.path(percentEncoded: false)
         let temporary = path + ".tmp-\(UUID().uuidString)"
-        let fd = open(temporary, O_CREAT | O_EXCL | O_WRONLY | O_NOFOLLOW | O_CLOEXEC, 0o600)
+        let fd = open(temporary, O_CREAT | O_EXCL | O_WRONLY | O_NOFOLLOW | O_CLOEXEC, mode)
         guard fd >= 0 else { throw problem(temporary) }
         var renamed = false
         defer {
@@ -131,7 +136,7 @@ public enum SystemLayout {
         let written = data.withUnsafeBytes { write(fd, $0.baseAddress, $0.count) }
         let synced = written == data.count && fsync(fd) == 0
         close(fd)
-        guard synced, chmod(temporary, 0o600) == 0,
+        guard synced, chmod(temporary, mode) == 0,
               lchown(temporary, ownership.uid, ownership.gid) == 0 else {
             throw problem(temporary)
         }

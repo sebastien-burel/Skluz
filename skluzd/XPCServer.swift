@@ -98,7 +98,90 @@ final class DaemonService: NSObject, SkluzDaemonProtocol, @unchecked Sendable {
         }
     }
 
+    // MARK: - Keys and host keys
+
+    func listKeys(reply: @escaping @Sendable (Data?, String?) -> Void) {
+        let paths = daemon.paths
+        Task {
+            Self.answer(reply) { try ManagedKeys.list(paths) }
+        }
+    }
+
+    func generateKey(name: String, reply: @escaping @Sendable (Data?, String?) -> Void) {
+        let (paths, ownership) = (daemon.paths, daemon.ownership)
+        adminOnly("generateKey", reply: { reply(nil, $0) }) {
+            Self.answer(reply) {
+                let key = try ManagedKeys.generate(name: name, comment: "skluzd@\(Self.shortHostName)",
+                                                   paths, ownership: ownership)
+                Log.config.info("Clé « \(name) » générée (\(key.fingerprint)).")
+                return key
+            }
+        }
+    }
+
+    func importKey(name: String, privateKey: Data, reply: @escaping @Sendable (Data?, String?) -> Void) {
+        let (paths, ownership) = (daemon.paths, daemon.ownership)
+        adminOnly("importKey", reply: { reply(nil, $0) }) {
+            Self.answer(reply) {
+                let key = try ManagedKeys.importKey(name: name, privateKey: privateKey, paths, ownership: ownership)
+                Log.config.info("Clé « \(name) » importée (\(key.fingerprint)).")
+                return key
+            }
+        }
+    }
+
+    func fetchHostKey(host: String, port: Int, reply: @escaping @Sendable (Data?, String?) -> Void) {
+        Task {
+            Self.answer(reply) { try HostKeys.scan(host: host, port: port) }
+        }
+    }
+
+    func trustHostKey(host: String, port: Int, type: String, key: String,
+                      reply: @escaping @Sendable (String?) -> Void) {
+        let daemon = self.daemon
+        adminOnly("trustHostKey", reply: reply) {
+            do {
+                try HostKeys.trust(type: type, key: key, host: host, port: port, daemon.paths,
+                                   ownership: daemon.ownership)
+                let fingerprint = ManagedKeys.fingerprint(ofBlob: key) ?? "?"
+                Log.config.info("Clé d'hôte approuvée pour \(HostKeys.pattern(host: host, port: port)) : \(type) \(fingerprint).")
+                reply(nil)
+                await daemon.retryTunnels(host: host, port: port)
+            } catch {
+                reply(error.localizedDescription)
+            }
+        }
+    }
+
     // MARK: - Helpers
+
+    private static var shortHostName: String {
+        var buffer = [CChar](repeating: 0, count: 256)
+        guard gethostname(&buffer, buffer.count) == 0 else { return "mac" }
+        let name = String(decoding: buffer.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }, as: UTF8.self)
+        return name.split(separator: ".").first.map(String.init) ?? "mac"
+    }
+
+    private static func answer(_ reply: @Sendable (Data?, String?) -> Void,
+                               _ body: () throws -> some Encodable) {
+        do {
+            reply(try DaemonAPI.encoder().encode(try body()), nil)
+        } catch {
+            reply(nil, error.localizedDescription)
+        }
+    }
+
+    /// Runs `body` off the XPC queue if the caller is an admin, otherwise
+    /// replies with the refusal.
+    private func adminOnly(_ call: String, reply: @escaping @Sendable (String) -> Void,
+                           _ body: @escaping @Sendable () async -> Void) {
+        guard Self.isAdmin(uid: uid) else {
+            Log.xpc.error("\(call) refusé : pid \(pid), uid \(uid) n'est pas administrateur.")
+            reply("Modification réservée aux administrateurs de ce Mac.")
+            return
+        }
+        Task { await body() }
+    }
 
     private func mutate(_ call: String, reply: @escaping @Sendable (String?) -> Void,
                         _ body: @escaping @Sendable (Daemon) async throws -> Void) {

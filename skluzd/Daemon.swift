@@ -17,9 +17,10 @@ enum DaemonError: Error, LocalizedError {
 
 /// Supervises the enabled System-mode tunnels of the root config.
 actor Daemon {
-    private let paths: SystemPaths
-    private let ownership: FileOwnership
+    nonisolated let paths: SystemPaths
+    nonisolated let ownership: FileOwnership
     private let supervisor: TunnelSupervisor
+    private let logStore = LogStore()
     private var active: [UUID: TunnelConfig] = [:]
     private var configured: [TunnelConfig] = []
     private var reconnections: [UUID: Int] = [:]
@@ -36,7 +37,7 @@ actor Daemon {
         // them with a crashed daemon. The registry lets the next run adopt
         // them instead of failing on their still-bound ports.
         let pidStore = RuntimePIDStore(url: paths.baseDirectory.appending(path: "runtime.json"))
-        self.supervisor = TunnelSupervisor(environment: environment, logStore: LogStore(), pidStore: pidStore)
+        self.supervisor = TunnelSupervisor(environment: environment, logStore: logStore, pidStore: pidStore)
     }
 
     func start() async {
@@ -108,12 +109,20 @@ actor Daemon {
         let states = await supervisor.states
         var tunnels: [TunnelStatus] = []
         for tunnel in listTunnels() {
-            tunnels.append(TunnelStatus(
+            var status = TunnelStatus(
                 tunnel: tunnel,
                 state: active[tunnel.id] == nil ? nil : states[tunnel.id],
                 lastError: await supervisor.lastFailure(for: tunnel.id),
                 reconnections: reconnections[tunnel.id] ?? 0
-            ))
+            )
+            // A host key refusal looks like any reconnection: surface it,
+            // the user has to trust (or investigate) the server key.
+            if status.phase == .reconnecting || status.phase == .failed,
+               status.lastError?.contains("Host key verification failed") == true,
+               let issue = HostKeys.failure(inLog: Array(await logStore.lines(for: tunnel.id).suffix(30))) {
+                status.phase = issue
+            }
+            tunnels.append(status)
         }
         return DaemonStatus(version: daemonVersion, configProblem: configProblem, tunnels: tunnels)
     }
@@ -144,6 +153,17 @@ actor Daemon {
         try await mutate("\(enabled ? "activation" : "désactivation") de \(id.uuidString)") { tunnels in
             guard let index = tunnels.firstIndex(where: { $0.id == id }) else { throw DaemonError.notFound(id) }
             tunnels[index].enabled = enabled
+        }
+    }
+
+    /// After a host key was trusted: retry its tunnels now rather than after
+    /// their backoff.
+    func retryTunnels(host: String, port: Int) async {
+        let states = await supervisor.states
+        for tunnel in active.values where tunnel.host == host && (tunnel.port ?? 22) == port {
+            if case .running = states[tunnel.id] { continue }
+            Log.supervisor.info("« \(tunnel.name) » : clé d'hôte approuvée, nouvelle tentative.")
+            await supervisor.start(tunnel)
         }
     }
 

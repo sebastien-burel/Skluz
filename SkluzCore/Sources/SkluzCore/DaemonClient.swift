@@ -71,6 +71,36 @@ public final class DaemonClient: @unchecked Sendable {
         }
     }
 
+    public func listKeys() async throws -> [ManagedKey] {
+        try await call { proxy, done in
+            proxy.listKeys { data, error in done(Self.decode(data, error)) }
+        }
+    }
+
+    public func generateKey(name: String) async throws -> ManagedKey {
+        try await call { proxy, done in
+            proxy.generateKey(name: name) { data, error in done(Self.decode(data, error)) }
+        }
+    }
+
+    public func importKey(name: String, privateKey: Data) async throws -> ManagedKey {
+        try await call { proxy, done in
+            proxy.importKey(name: name, privateKey: privateKey) { data, error in done(Self.decode(data, error)) }
+        }
+    }
+
+    public func fetchHostKeys(host: String, port: Int) async throws -> [HostKey] {
+        try await call { proxy, done in
+            proxy.fetchHostKey(host: host, port: port) { data, error in done(Self.decode(data, error)) }
+        }
+    }
+
+    public func trustHostKey(_ key: HostKey, host: String, port: Int) async throws {
+        try await call { proxy, done in
+            proxy.trustHostKey(host: host, port: port, type: key.type, key: key.key) { done(Self.check($0)) }
+        }
+    }
+
     // MARK: - Plumbing
 
     /// Resumes exactly once, from the reply or from the connection error.

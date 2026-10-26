@@ -66,6 +66,18 @@ public enum SSHCommandBuilder {
         }
     }
 
+    /// Host and port of an XPC request that targets a server directly
+    /// (`fetchHostKey`, `trustHostKey`), with the same rules as a tunnel.
+    public static func validateEndpoint(host: String, port: Int) throws {
+        try checkHost(host, field: "host SSH")
+        try checkPort(port, field: "port SSH")
+    }
+
+    /// Name of a dedicated daemon key, used as a file name under `keys/`.
+    public static func validateKeyName(_ name: String) throws {
+        try checkKeyName(name)
+    }
+
     private static let hostCharacters = CharacterSet(charactersIn:
         "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-:")
     private static let userCharacters = CharacterSet(charactersIn:

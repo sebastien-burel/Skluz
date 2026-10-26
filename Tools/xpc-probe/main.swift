@@ -6,6 +6,8 @@ import Foundation
 //
 //   probe version | status | list
 //   probe upsert <tunnel.json> | delete <id> | enable <id> on|off
+//   probe keys | genkey <name> | importkey <name> <private-key-file>
+//   probe hostkeys <host> <port> | trust <host> <port> <type> <base64>
 
 func output(_ value: some Encodable) throws {
     let encoder = DaemonAPI.encoder()
@@ -35,8 +37,21 @@ do {
     case "enable" where arguments.count == 3:
         try await client.setEnabled(id: UUID(uuidString: arguments[1]) ?? UUID(), arguments[2] == "on")
         print("ok")
+    case "keys":
+        try output(try await client.listKeys())
+    case "genkey" where arguments.count == 2:
+        try output(try await client.generateKey(name: arguments[1]))
+    case "importkey" where arguments.count == 3:
+        try output(try await client.importKey(name: arguments[1],
+                                              privateKey: try Data(contentsOf: URL(filePath: arguments[2]))))
+    case "hostkeys" where arguments.count == 3:
+        try output(try await client.fetchHostKeys(host: arguments[1], port: Int(arguments[2]) ?? 0))
+    case "trust" where arguments.count == 5:
+        try await client.trustHostKey(HostKey(type: arguments[3], key: arguments[4], fingerprint: ""),
+                                      host: arguments[1], port: Int(arguments[2]) ?? 0)
+        print("ok")
     default:
-        FileHandle.standardError.write(Data("usage: probe version|status|list|upsert <file>|delete <id>|enable <id> on|off\n".utf8))
+        FileHandle.standardError.write(Data("usage: see Tools/xpc-probe/main.swift\n".utf8))
         exit(EX_USAGE)
     }
     exitCode = 0

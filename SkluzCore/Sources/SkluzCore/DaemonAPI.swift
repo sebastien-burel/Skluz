@@ -15,6 +15,21 @@ import Foundation
     func deleteTunnel(id: String, reply: @escaping @Sendable (String?) -> Void)
     /// Admins only.
     func setEnabled(id: String, enabled: Bool, reply: @escaping @Sendable (String?) -> Void)
+
+    // MARK: Keys and host keys (phase 5)
+
+    /// JSON `[ManagedKey]`.
+    func listKeys(reply: @escaping @Sendable (Data?, String?) -> Void)
+    /// New ed25519 key without passphrase; replies its JSON `ManagedKey`. Admins only.
+    func generateKey(name: String, reply: @escaping @Sendable (Data?, String?) -> Void)
+    /// Existing private key, refused if it has a passphrase; replies its JSON
+    /// `ManagedKey`. Admins only.
+    func importKey(name: String, privateKey: Data, reply: @escaping @Sendable (Data?, String?) -> Void)
+    /// `ssh-keyscan` of the server; replies JSON `[HostKey]` to show the user.
+    func fetchHostKey(host: String, port: Int, reply: @escaping @Sendable (Data?, String?) -> Void)
+    /// Adds a key the user confirmed to the daemon's known_hosts. Admins only.
+    func trustHostKey(host: String, port: Int, type: String, key: String,
+                      reply: @escaping @Sendable (String?) -> Void)
 }
 
 public enum DaemonAPI {
@@ -67,6 +82,10 @@ public struct DaemonStatus: Codable, Equatable, Sendable {
 public struct TunnelStatus: Codable, Equatable, Sendable {
     public enum Phase: String, Codable, Sendable {
         case up, starting, reconnecting, failed, stopped
+        /// The server is not in the daemon's known_hosts yet: trust it first.
+        case hostKeyUnknown
+        /// The server key differs from the trusted one: possible attack.
+        case hostKeyChanged
     }
 
     public var id: UUID
