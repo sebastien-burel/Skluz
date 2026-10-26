@@ -122,6 +122,11 @@ actor Daemon {
                let issue = HostKeys.failure(inLog: Array(await logStore.lines(for: tunnel.id).suffix(30))) {
                 status.phase = issue
             }
+            // Past errors of a tunnel that is up again would only mislead;
+            // `reconnections` still tells it flapped.
+            if status.phase == .up {
+                status.lastError = nil
+            }
             tunnels.append(status)
         }
         return DaemonStatus(version: daemonVersion, configProblem: configProblem, tunnels: tunnels)
