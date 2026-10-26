@@ -14,6 +14,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     )
     private let systemModel = SystemTunnelsModel()
     private var menuBarController: MenuBarController?
+    private var updateWatch: DispatchSourceFileSystemObject?
 
     /// Unit tests are hosted in the app: the real startup would load the
     /// user's tunnels.json and spawn their autoStart tunnels.
@@ -25,6 +26,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard !Self.isHostingTests else { return }
         menuBarController = MenuBarController(viewModel: viewModel, system: systemModel)
         systemModel.startPolling()
+        updateWatch = DaemonManager.relaunchWhenReplaced()
         Task { [viewModel] in
             await viewModel.load()
         }

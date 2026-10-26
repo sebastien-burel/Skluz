@@ -73,6 +73,32 @@ let signalSources = [
     }
 ]
 
+// Updating the app replaces this binary while it runs. Clients then refuse
+// the old process (its signature can no longer be checked on disk) and the
+// app cannot even ask it to restart: exit by itself, without stopping the
+// tunnels, so that launchd (KeepAlive) starts the new binary, which adopts
+// the running ssh. The delay lets the copy of the new bundle finish. Also
+// active in development mode, where it is harmless and testable.
+func watchOwnExecutable() -> DispatchSourceFileSystemObject? {
+    var buffer = [CChar](repeating: 0, count: Int(MAXPATHLEN))
+    let length = proc_pidpath(getpid(), &buffer, UInt32(MAXPATHLEN))
+    guard length > 0 else { return nil }
+    let path = String(decoding: buffer.prefix(Int(length)).map { UInt8(bitPattern: $0) }, as: UTF8.self)
+    let fd = open(path, O_EVTONLY)
+    guard fd >= 0 else { return nil }
+    let source = DispatchSource.makeFileSystemObjectSource(fileDescriptor: fd, eventMask: [.delete, .rename, .revoke],
+                                                           queue: .main)
+    source.setEventHandler {
+        source.cancel()
+        Log.supervisor.info("Binaire remplacé (mise à jour) : relance dans 5 s, les tunnels restent ouverts.")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5) { exit(0) }
+    }
+    source.setCancelHandler { close(fd) }
+    source.resume()
+    return source
+}
+let executableWatch = watchOwnExecutable()
+
 // The Mach service only exists when launchd runs the daemon: in development
 // mode (--base-dir) there is nothing to listen on.
 let xpcServer = devBaseDirectory == nil ? XPCServer(daemon: daemon) : nil
@@ -82,6 +108,6 @@ Task { [daemon, xpcServer] in
     xpcServer?.start()
 }
 
-withExtendedLifetime((signalSources, xpcServer)) {
+withExtendedLifetime((signalSources, xpcServer, executableWatch)) {
     dispatchMain()
 }

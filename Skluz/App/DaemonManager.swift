@@ -62,6 +62,27 @@ enum DaemonManager {
         NSApp.terminate(nil)
     }
 
+    /// Relaunches from the new bundle once an update replaced this binary:
+    /// the old process would be refused by the daemon (its signature can no
+    /// longer be checked) and macOS no longer ties it to its bundle.
+    static func relaunchWhenReplaced() -> DispatchSourceFileSystemObject? {
+        guard let executable = Bundle.main.executableURL?.path(percentEncoded: false) else { return nil }
+        let fd = open(executable, O_EVTONLY)
+        guard fd >= 0 else { return nil }
+        let source = DispatchSource.makeFileSystemObjectSource(fileDescriptor: fd, eventMask: [.delete, .rename, .revoke],
+                                                               queue: .main)
+        source.setEventHandler {
+            source.cancel()
+            // Let the copy of the new bundle finish before opening it.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
+                if FileManager.default.fileExists(atPath: executable) { relaunch() }
+            }
+        }
+        source.setCancelHandler { close(fd) }
+        source.resume()
+        return source
+    }
+
     /// App version, as compared with the daemon's.
     static var appVersion: (short: String, build: String) {
         (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?",

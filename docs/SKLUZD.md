@@ -69,17 +69,23 @@ open /Applications/Skluz.app
 ## Mise à jour
 
 ```sh
-# 1. Quitter Skluz (menu → Quitter) — indispensable, voir « Pièges »
 sudo rm -rf /Applications/Skluz.app
 sudo ditto Skluz.app /Applications/Skluz.app
 sudo chown -R root:wheel /Applications/Skluz.app && sudo chmod -R go-w /Applications/Skluz.app
-open /Applications/Skluz.app
 ```
 
-Au lancement, l'app compare sa version à celle du service et lui demande de se
-relancer s'ils diffèrent : launchd démarre alors le nouveau `skluzd`, qui
-**réadopte les ssh en cours** (les tunnels ne sont pas coupés). Vérifier avec
-`skluz status` : la première ligne donne la version et le build du service.
+Rien à quitter ni à désactiver : le daemon et l'app surveillent leur propre
+binaire. Dès qu'il est remplacé, le daemon quitte **sans couper ses tunnels** ;
+launchd démarre alors le nouveau `skluzd`, qui réadopte les ssh en cours. L'app
+se relance d'elle-même depuis le nouveau bundle. En dernier recours, l'app
+installée demande aussi à un daemon d'une autre version de se relancer.
+
+Vérifier avec `skluz status` : la première ligne donne la version et le build
+du service.
+
+**Exception** : un daemon antérieur à la build 43 n'a pas cette surveillance.
+Pour passer d'une telle version à une version récente, désactiver le service,
+quitter Skluz, remplacer l'app, la relancer et réactiver le service.
 
 ## Désinstallation
 
@@ -115,10 +121,12 @@ sudo sfltool dumpbtm | grep -B3 -A8 skluzd
 
 ## Pièges constatés
 
-- **App lancée depuis un bundle remplacé** : après un `rm -rf` + `ditto`
-  pendant que Skluz tournait, macOS ne relie plus le processus à son bundle et
-  refuse l'activation (« Operation not permitted », état « Introuvable dans
-  l'app »). Skluz le détecte et propose **Relancer Skluz**.
+- **App ou daemon tournant depuis un bundle remplacé** : macOS ne relie plus
+  le processus à son bundle (activation refusée : « Operation not permitted »,
+  état « Introuvable dans l'app ») et sa signature n'est plus vérifiable, donc
+  l'XPC est refusé (« Couldn't communicate with a helper application »). Depuis
+  la build 43, les deux se relancent seuls ; sinon, les Préférences proposent
+  **Relancer Skluz**.
 - **Copies parasites dans LaunchServices** (Corbeille, builds Xcode) : même
   symptôme possible. Les retirer :
   ```sh
