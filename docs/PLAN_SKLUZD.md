@@ -205,7 +205,7 @@ Skluz.app/
 **Tâches**
 - Mise à jour : au lancement, l'app compare `version()` du daemon à sa propre version. En cas d'écart, elle fait `unregister()` puis `register()`, ou demande au daemon de se terminer pour que launchd relance le nouveau binaire.
 - Désinstallation : un bouton « Supprimer le service système » fait `unregister()`. Une option supprime aussi `/Library/Application Support/Skluz/` après confirmation.
-- Ajouter à `docs/` une page `SKLUZD.md` (commandes `log` à écrire `/usr/bin/log` : sous zsh, `log` est une commande interne) : fonctionnement, prérequis d'installation (Skluz dans `/Applications`, compte admin, une session VNC unique pour l'approbation initiale, déverrouillage FileVault par SSH), emplacements des fichiers, commandes de diagnostic (`skluz status`, `sudo launchctl print system/net.haruni.skluzd`, `log show --last boot --predicate 'subsystem == "net.haruni.skluzd"'`).
+- Ajouter à `docs/` une page `SKLUZD.md` (commandes `log` à écrire `/usr/bin/log` : sous zsh, `log` est une commande interne ; piège constaté en phase 4 : si LaunchServices connaît d'autres copies de Skluz — Corbeille, builds —, l'activation peut échouer en « Operation not permitted » ; corriger avec `lsregister -u` sur les copies parasites puis `lsregister -f /Applications/Skluz.app`) : fonctionnement, prérequis d'installation (Skluz dans `/Applications`, compte admin, une session VNC unique pour l'approbation initiale, déverrouillage FileVault par SSH), emplacements des fichiers, commandes de diagnostic (`skluz status`, `sudo launchctl print system/net.haruni.skluzd`, `log show --last boot --predicate 'subsystem == "net.haruni.skluzd"'`).
 
 **PASS — test de référence sur le Mac mini**
 1. FileVault actif, au moins 2 tunnels en mode Système.
