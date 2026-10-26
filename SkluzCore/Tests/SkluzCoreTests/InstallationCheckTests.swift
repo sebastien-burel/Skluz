@@ -37,8 +37,11 @@ struct InstallationCheckTests {
     @Test func userOwnedBundleIsRefusedForRoot() throws {
         let bundle = try makeBundle()
         defer { cleanup(bundle) }
+        // The temporary parent folders belong to the user too: they are
+        // reported first, as an ancestor others than root could rewrite.
         let problem = try #require(InstallationCheck.firstProblem(bundle: bundle, owner: 0))
-        #expect(problem.issue == .wrongOwner(uid: getuid()))
+        #expect(problem.issue == .unsafeAncestor(mode: 0o755) || problem.issue == .unsafeAncestor(mode: 0o700)
+                || problem.issue == .wrongOwner(uid: getuid()))
         #expect(problem.fixCommand.hasPrefix("sudo chown -R root:wheel"))
     }
 
@@ -69,5 +72,29 @@ struct InstallationCheckTests {
         try FileManager.default.removeItem(at: bundle.appending(path: "Contents/MacOS/skluzd"))
 
         #expect(InstallationCheck.firstProblem(bundle: bundle, owner: getuid())?.issue == .missing)
+    }
+
+    @Test func worldWritableParentIsRefused() throws {
+        let bundle = try makeBundle()
+        defer { cleanup(bundle) }
+        let parent = bundle.deletingLastPathComponent().path(percentEncoded: false)
+        chmod(parent, 0o777)
+
+        let problem = try #require(InstallationCheck.firstProblem(bundle: bundle, owner: getuid()))
+        #expect(problem.issue == .unsafeAncestor(mode: 0o777))
+    }
+
+    /// /Applications is root:admin 775 on every Mac: accepted as a parent.
+    @Test func applicationsFolderAsShippedIsAccepted() {
+        #expect(InstallationCheck.firstUnsafeAncestor(of: "/Applications/Skluz.app", owner: 0) == nil)
+    }
+
+    @Test func userHomeIsNotASafeParentForRoot() {
+        let problem = InstallationCheck.firstUnsafeAncestor(of: NSHomeDirectory() + "/Skluz.app", owner: 0)
+        guard case .unsafeAncestor = problem?.issue else {
+            Issue.record("Expected the user-owned home folder to be refused, got \(String(describing: problem))")
+            return
+        }
+        #expect(problem?.path == NSHomeDirectory())
     }
 }

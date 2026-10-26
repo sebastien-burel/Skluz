@@ -24,6 +24,9 @@ public enum InstallationCheck {
             case symbolicLink
             case wrongOwner(uid: uid_t)
             case writableByOthers(mode: mode_t)
+            /// A parent folder lets someone else rename the bundle away and
+            /// put another one in its place.
+            case unsafeAncestor(mode: mode_t)
         }
 
         public let path: String
@@ -38,6 +41,7 @@ public enum InstallationCheck {
             case .symbolicLink:               "est un lien symbolique"
             case .wrongOwner:                 "n'appartient pas à root"
             case .writableByOthers:           "est modifiable par d'autres que root"
+            case .unsafeAncestor:             "permet à d'autres que root ou le groupe admin de remplacer l'app"
             }
             return "« \(path) » \(detail) : le service système exige une app installée au nom de root."
         }
@@ -49,8 +53,16 @@ public enum InstallationCheck {
     }
 
     public static func firstProblem(bundle: URL, owner: uid_t = 0) -> Problem? {
-        let root = bundle.path(percentEncoded: false).trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        let bundlePath = "/" + root
+        let given = bundle.path(percentEncoded: false)
+        guard let resolved = realpath(given, nil) else {
+            return Problem(path: given, issue: .missing, bundlePath: given)
+        }
+        let bundlePath = String(cString: resolved)
+        free(resolved)
+
+        if let problem = firstUnsafeAncestor(of: bundlePath, owner: owner) {
+            return problem
+        }
         for component in protectedComponents {
             let path = component.isEmpty ? bundlePath : bundlePath + "/" + component
             var info = stat()
@@ -68,5 +80,30 @@ public enum InstallationCheck {
             }
         }
         return nil
+    }
+
+    /// Every folder above the bundle must belong to root (or `owner`, for
+    /// tests), not be a symlink, and be writable by nobody else, except the
+    /// admin group: /Applications is root:admin 775 on every Mac, and admins
+    /// may already reconfigure the daemon.
+    static func firstUnsafeAncestor(of bundlePath: String, owner: uid_t) -> Problem? {
+        let adminGroup = getgrnam("admin")?.pointee.gr_gid
+        var directory = (bundlePath as NSString).deletingLastPathComponent
+        while true {
+            var info = stat()
+            guard lstat(directory, &info) == 0 else {
+                return Problem(path: directory, issue: .missing, bundlePath: bundlePath)
+            }
+            let mode = info.st_mode & 0o777
+            let groupWriteAllowed = adminGroup != nil && info.st_gid == adminGroup
+            if info.st_mode & S_IFMT == S_IFLNK
+                || (info.st_uid != 0 && info.st_uid != owner)
+                || mode & 0o002 != 0
+                || (mode & 0o020 != 0 && !groupWriteAllowed) {
+                return Problem(path: directory, issue: .unsafeAncestor(mode: mode), bundlePath: bundlePath)
+            }
+            if directory == "/" { return nil }
+            directory = (directory as NSString).deletingLastPathComponent
+        }
     }
 }
