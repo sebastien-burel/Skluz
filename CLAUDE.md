@@ -127,7 +127,7 @@ open -n "$(xcodebuild -project Skluz.xcodeproj -scheme Skluz -showBuildSettings 
   2>/dev/null | awk -F' = ' '/ BUILT_PRODUCTS_DIR /{print $2}')/Skluz.app"
 ```
 
-Régénérer l'AppIcon : `swift Tools/generate_appicon.swift`.
+Régénérer l'AppIcon : `swift Tools/generate_appicon.swift` (dessin vectoriel, style TyKaoz/Dasson : fond `#0D2440`, accent `#2C9FB3` ; dessin simplifié jusqu'à 32 px).
 Signature Developer ID + notarisation : voir `NOTARIZATION.md`.
 
 ## Langue

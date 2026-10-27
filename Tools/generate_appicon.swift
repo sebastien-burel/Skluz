@@ -1,88 +1,108 @@
-// Génère le set AppIcon (palette Haruni) — placeholder perfectible.
+// Génère le jeu AppIcon de Skluz, dans le style des apps Haruni (TyKaoz,
+// Dasson) : fond bleu nuit uni, glyphe blanc arrondi, accent turquoise.
+//
+// Le glyphe est l'écluse : deux portes, la traverse, et l'eau qui passe —
+// une vague grise derrière, une vague turquoise devant. Jusqu'à 32 px, un
+// dessin simplifié (une seule vague, trait plus épais) reste lisible.
+//
 // Usage : swift Tools/generate_appicon.swift
 import AppKit
+import ImageIO
+import UniformTypeIdentifiers
 
-let palette = (
-    paper: NSColor(srgbRed: 0.980, green: 0.972, blue: 0.965, alpha: 1), // #FAF8F6
-    ink:   NSColor(srgbRed: 0.176, green: 0.141, blue: 0.125, alpha: 1), // #2D2420
-    terra: NSColor(srgbRed: 0.910, green: 0.365, blue: 0.227, alpha: 1)  // #E85D3A
-)
+// Couleurs relevées sur les icônes de TyKaoz et Dasson (sRGB).
+let navy = NSColor(srgbRed: 0x0D / 255, green: 0x24 / 255, blue: 0x40 / 255, alpha: 1)
+let teal = NSColor(srgbRed: 0x2C / 255, green: 0x9F / 255, blue: 0xB3 / 255, alpha: 1)
+let mist = NSColor(srgbRed: 0xB7 / 255, green: 0xBE / 255, blue: 0xC6 / 255, alpha: 1)
+let sRGB = CGColorSpace(name: CGColorSpace.sRGB)!
 
-// Master fourni par un designer : Tools/icon-master.png (carré, idéalement
-// 1024×1024, forme/ombre déjà incluses). S'il est présent, on se contente
-// de le redimensionner ; sinon on dessine le placeholder Core Graphics.
-let masterPath = "Tools/icon-master.png"
-let master = NSImage(contentsOfFile: masterPath)
-if master != nil { print("Master détecté (\(masterPath)) : découpe par redimensionnement.") }
+struct Glyph {
+    /// Size of the glyph relative to the full-size design.
+    var scale: CGFloat
+    /// Stroke thickness relative to the full-size design.
+    var strokeFactor: CGFloat
+    /// The grey back wave; dropped at small sizes, where it blurs into the other.
+    var hasBackWave: Bool
 
-func newRep(_ side: CGFloat) -> NSBitmapImageRep {
-    NSBitmapImageRep(
-        bitmapDataPlanes: nil, pixelsWide: Int(side), pixelsHigh: Int(side),
-        bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
-        colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0
-    )!
+    static let full = Glyph(scale: 0.75, strokeFactor: 1.18, hasBackWave: true)
+    static let small = Glyph(scale: 0.78, strokeFactor: 1.35, hasBackWave: false)
 }
 
-func drawIcon(side: CGFloat) -> NSBitmapImageRep {
-    if let master {
-        let rep = newRep(side)
-        NSGraphicsContext.saveGraphicsState()
-        let ctx = NSGraphicsContext(bitmapImageRep: rep)
-        ctx?.imageInterpolation = .high
-        NSGraphicsContext.current = ctx
-        master.draw(
-            in: NSRect(x: 0, y: 0, width: side, height: side),
-            from: .zero, operation: .copy, fraction: 1
-        )
-        NSGraphicsContext.restoreGraphicsState()
-        return rep
+/// One sine period across the lock, in unit coordinates centered on (0.5, 0.5).
+func wave(at y: CGFloat, amplitude: CGFloat, from x0: CGFloat, to x1: CGFloat) -> NSBezierPath {
+    let path = NSBezierPath()
+    let steps = 64
+    for i in 0...steps {
+        let t = CGFloat(i) / CGFloat(steps)
+        let point = NSPoint(x: x0 + (x1 - x0) * t, y: y + amplitude * sin(t * 2 * .pi))
+        i == 0 ? path.move(to: point) : path.line(to: point)
     }
-    return drawPlaceholder(side: side)
+    return path
 }
 
-func drawPlaceholder(side: CGFloat) -> NSBitmapImageRep {
-    let rep = newRep(side)
+func line(from a: NSPoint, to b: NSPoint) -> NSBezierPath {
+    let path = NSBezierPath()
+    path.move(to: a)
+    path.line(to: b)
+    return path
+}
+
+func render(side: Int, glyph: Glyph) -> CGImage {
+    let s = CGFloat(side)
+    let context = CGContext(data: nil, width: side, height: side, bitsPerComponent: 8, bytesPerRow: 0,
+                            space: sRGB, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
     NSGraphicsContext.saveGraphicsState()
-    NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+    NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: false)
 
-    let rect = NSRect(x: 0, y: 0, width: side, height: side)
-    // Squircle macOS : marge ~ 1/16, rayon ~ 0.224.
-    let inset = side * 0.0625
-    let body = rect.insetBy(dx: inset, dy: inset)
-    let radius = body.width * 0.224
-    let squircle = NSBezierPath(roundedRect: body, xRadius: radius, yRadius: radius)
-    palette.paper.setFill()
+    // macOS grid: an 824/1024 body with a soft drop shadow below it.
+    let inset = s * 100 / 1024
+    let body = NSRect(x: inset, y: inset * 1.12, width: s - 2 * inset, height: s - 2 * inset)
+    let squircle = NSBezierPath(roundedRect: body, xRadius: body.width * 0.2237, yRadius: body.width * 0.2237)
+    NSGraphicsContext.saveGraphicsState()
+    let shadow = NSShadow()
+    shadow.shadowColor = NSColor.black.withAlphaComponent(0.30)
+    shadow.shadowBlurRadius = s * 0.018
+    shadow.shadowOffset = NSSize(width: 0, height: -s * 0.008)
+    shadow.set()
+    navy.setFill()
     squircle.fill()
-    palette.ink.withAlphaComponent(0.12).setStroke()
-    squircle.lineWidth = side * 0.006
-    squircle.stroke()
+    NSGraphicsContext.restoreGraphicsState()
 
-    // Écluse : deux portes + passage (terracotta).
-    let cx = side / 2, cy = side / 2
-    let gateHalf = side * 0.22
-    let gateX = side * 0.16
-    let lineW = side * 0.052
-
-    palette.ink.setStroke()
-    for dx in [-gateX, gateX] {
-        let gate = NSBezierPath()
-        gate.move(to: NSPoint(x: cx + dx, y: cy - gateHalf))
-        gate.line(to: NSPoint(x: cx + dx, y: cy + gateHalf))
-        gate.lineWidth = lineW
-        gate.lineCapStyle = .round
-        gate.stroke()
+    // Unit coordinates around (0.5, 0.5), scaled into the body.
+    var transform = AffineTransform(translationByX: -0.5, byY: -0.5)
+    transform.append(AffineTransform(scale: s * glyph.scale))
+    transform.append(AffineTransform(translationByX: s / 2, byY: body.midY))
+    func stroke(_ path: NSBezierPath, _ color: NSColor) {
+        path.transform(using: transform)
+        path.lineWidth = s * 0.072 * glyph.scale * glyph.strokeFactor
+        path.lineCapStyle = .round
+        path.lineJoinStyle = .round
+        color.setStroke()
+        path.stroke()
     }
 
-    let passage = NSBezierPath()
-    passage.move(to: NSPoint(x: cx - side * 0.30, y: cy))
-    passage.line(to: NSPoint(x: cx + side * 0.30, y: cy))
-    passage.lineWidth = lineW * 1.05
-    passage.lineCapStyle = .round
-    palette.terra.setStroke()
-    passage.stroke()
+    let left: CGFloat = 0.285, right: CGFloat = 0.715
+    // Water behind the gates, so the gates read in front.
+    if glyph.hasBackWave {
+        stroke(wave(at: 0.535, amplitude: 0.022, from: left, to: right), mist)
+        stroke(wave(at: 0.445, amplitude: 0.022, from: left, to: right), teal)
+    } else {
+        stroke(wave(at: 0.465, amplitude: 0.022, from: left, to: right), teal)
+    }
+    for x: CGFloat in [0.395, 0.605] {
+        stroke(line(from: NSPoint(x: x, y: 0.300), to: NSPoint(x: x, y: 0.700)), .white)
+    }
+    stroke(line(from: NSPoint(x: left, y: 0.625), to: NSPoint(x: right, y: 0.625)), .white)
 
     NSGraphicsContext.restoreGraphicsState()
-    return rep
+    return context.makeImage()!
+}
+
+func writePNG(_ image: CGImage, to path: String) {
+    let destination = CGImageDestinationCreateWithURL(URL(fileURLWithPath: path) as CFURL,
+                                                      UTType.png.identifier as CFString, 1, nil)!
+    CGImageDestinationAddImage(destination, image, nil)
+    guard CGImageDestinationFinalize(destination) else { fatalError("écriture impossible : \(path)") }
 }
 
 let setDir = "Skluz/Assets.xcassets/AppIcon.appiconset"
@@ -95,9 +115,7 @@ var images: [[String: String]] = []
 for entry in entries {
     let px = entry.size * entry.scale
     let name = "icon_\(entry.size)x\(entry.size)@\(entry.scale)x.png"
-    let rep = drawIcon(side: CGFloat(px))
-    let data = rep.representation(using: .png, properties: [:])!
-    try! data.write(to: URL(fileURLWithPath: "\(setDir)/\(name)"))
+    writePNG(render(side: px, glyph: px <= 32 ? .small : .full), to: "\(setDir)/\(name)")
     images.append([
         "idiom": "mac",
         "scale": "\(entry.scale)x",
@@ -110,8 +128,6 @@ let contents: [String: Any] = [
     "images": images,
     "info": ["author": "xcode", "version": 1]
 ]
-let json = try! JSONSerialization.data(
-    withJSONObject: contents, options: [.prettyPrinted, .sortedKeys]
-)
+let json = try! JSONSerialization.data(withJSONObject: contents, options: [.prettyPrinted, .sortedKeys])
 try! json.write(to: URL(fileURLWithPath: "\(setDir)/Contents.json"))
-print("AppIcon set généré : \(entries.count) images.")
+print("AppIcon généré : \(entries.count) images (dessin simplifié jusqu'à 32 px).")
