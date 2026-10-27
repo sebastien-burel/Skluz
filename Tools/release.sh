@@ -212,7 +212,13 @@ pkgbuild --root "$PKG_ROOT" --component-plist "$COMPONENTS" \
   --identifier "net.haruni.skluz.pkg" --version "$VERSION" \
   --install-location /Applications --ownership recommended \
   "$STAGE/$APP_NAME-component.pkg" | sed 's/^/  /'
-productbuild --package "$STAGE/$APP_NAME-component.pkg" \
+# A distribution file gives the package its title, shown by Installer
+# ("Package name is …" with the CLI) — none without it.
+DISTRIBUTION="$STAGE/distribution.xml"
+productbuild --synthesize --package "$STAGE/$APP_NAME-component.pkg" "$DISTRIBUTION" >/dev/null
+sed -i '' "s|<installer-gui-script minSpecVersion=\"[0-9]*\">|&<title>$APP_NAME $VERSION</title>|" "$DISTRIBUTION"
+grep -q "<title>$APP_NAME $VERSION</title>" "$DISTRIBUTION" || fail "could not set the package title"
+productbuild --distribution "$DISTRIBUTION" --package-path "$STAGE" \
   --identifier "net.haruni.skluz.installer" --version "$VERSION" \
   --sign "$INSTALLER_IDENTITY: HARUNI ($TEAM_ID)" --timestamp \
   "$PKG" | sed 's/^/  /'
