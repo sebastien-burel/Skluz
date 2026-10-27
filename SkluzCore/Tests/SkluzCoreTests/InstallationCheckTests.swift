@@ -15,12 +15,14 @@ struct InstallationCheckTests {
         try fm.createDirectory(at: bundle.appending(path: "Contents/MacOS"), withIntermediateDirectories: true)
         try fm.createDirectory(at: bundle.appending(path: "Contents/Library/LaunchDaemons"), withIntermediateDirectories: true)
         try fm.createDirectory(at: bundle.appending(path: "Contents/Helpers"), withIntermediateDirectories: true)
+        try fm.createDirectory(at: bundle.appending(path: "Contents/Resources"), withIntermediateDirectories: true)
         for (file, mode) in [("Contents/MacOS/skluzd", 0o755), ("Contents/Library/LaunchDaemons/net.haruni.skluzd.plist", 0o644),
-                             ("Contents/Helpers/skluz", 0o755)] {
+                             ("Contents/Helpers/skluz", 0o755), ("Contents/Resources/skluz-uninstall.sh", 0o644)] {
             fm.createFile(atPath: bundle.appending(path: file).path(percentEncoded: false), contents: Data(),
                           attributes: [.posixPermissions: mode])
         }
-        for dir in ["", "Contents", "Contents/MacOS", "Contents/Library", "Contents/Library/LaunchDaemons", "Contents/Helpers"] {
+        for dir in ["", "Contents", "Contents/MacOS", "Contents/Library", "Contents/Library/LaunchDaemons", "Contents/Helpers",
+                    "Contents/Resources"] {
             chmod((dir.isEmpty ? bundle : bundle.appending(path: dir)).path(percentEncoded: false), 0o755)
         }
         return bundle

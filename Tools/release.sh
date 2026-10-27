@@ -112,6 +112,7 @@ EOF
 fi
 DMG="$OUT/$APP_NAME-$VERSION.dmg"
 PKG="$OUT/$APP_NAME-$VERSION.pkg"
+UNINSTALL_PKG="$OUT/$APP_NAME-Uninstall-$VERSION.pkg"
 
 # --- Verify the exported app ----------------------------------------------
 # These checks catch what notarization would otherwise reject much later.
@@ -225,6 +226,54 @@ productbuild --distribution "$DISTRIBUTION" --package-path "$STAGE" \
 pkgutil --check-signature "$PKG" | grep -E "Status|Developer ID Installer" | sed 's/^/  /'
 echo "  $PKG"
 
+# --- Uninstaller package --------------------------------------------------
+# No payload: postinstall scripts running the uninstall script shipped in
+# the app (Contents/Resources/skluz-uninstall.sh), the same one as
+# `sudo skluz uninstall`. The second choice, off by default, also deletes
+# the system configuration (--purge).
+step "Building the uninstaller package"
+UNINSTALLER_SCRIPT="$APP/Contents/Resources/skluz-uninstall.sh"
+[ -f "$UNINSTALLER_SCRIPT" ] || fail "the uninstall script is missing from the app"
+mkdir -p "$STAGE/uninstall-components"
+for flavor in base purge; do
+  scripts="$STAGE/uninstall-$flavor"
+  mkdir -p "$scripts"
+  cp "$UNINSTALLER_SCRIPT" "$scripts/skluz-uninstall.sh"
+  option=""
+  [ "$flavor" = purge ] && option=" --purge"
+  printf '#!/bin/sh\nexec /bin/sh "$(dirname "$0")/skluz-uninstall.sh"%s\n' "$option" > "$scripts/postinstall"
+  chmod 755 "$scripts/postinstall"
+  pkgbuild --nopayload --scripts "$scripts" \
+    --identifier "net.haruni.skluz.uninstall.$flavor" --version "$VERSION" \
+    "$STAGE/uninstall-components/uninstall-$flavor.pkg" | sed 's/^/  /'
+done
+cat > "$STAGE/uninstall-distribution.xml" <<DIST
+<?xml version="1.0" encoding="utf-8"?>
+<installer-gui-script minSpecVersion="1">
+    <title>Désinstaller $APP_NAME</title>
+    <options customize="allow" require-scripts="true" hostArchitectures="arm64,x86_64"/>
+    <choices-outline>
+        <line choice="uninstall"/>
+        <line choice="purge"/>
+    </choices-outline>
+    <choice id="uninstall" title="Désinstaller $APP_NAME" enabled="false" selected="true"
+            description="Arrête le service système, supprime l'app et la commande skluz. La configuration système est conservée.">
+        <pkg-ref id="net.haruni.skluz.uninstall.base"/>
+    </choice>
+    <choice id="purge" title="Effacer aussi la configuration système" start_selected="false"
+            description="Supprime aussi les tunnels Système, les clés dédiées et known_hosts. Les clés sont perdues : retirez leurs lignes des authorized_keys des serveurs.">
+        <pkg-ref id="net.haruni.skluz.uninstall.purge"/>
+    </choice>
+    <pkg-ref id="net.haruni.skluz.uninstall.base" version="$VERSION">uninstall-base.pkg</pkg-ref>
+    <pkg-ref id="net.haruni.skluz.uninstall.purge" version="$VERSION">uninstall-purge.pkg</pkg-ref>
+</installer-gui-script>
+DIST
+productbuild --distribution "$STAGE/uninstall-distribution.xml" --package-path "$STAGE/uninstall-components" \
+  --identifier "net.haruni.skluz.uninstaller" --version "$VERSION" \
+  --sign "$INSTALLER_IDENTITY: HARUNI ($TEAM_ID)" --timestamp \
+  "$UNINSTALL_PKG" | sed 's/^/  /'
+echo "  $UNINSTALL_PKG"
+
 # --- Notarize the DMG ------------------------------------------------------
 if [ "$SKIP_NOTARIZE" -eq 1 ]; then
   step "Skipping notarization (--skip-notarize)"
@@ -246,11 +295,18 @@ step "Stapling the installer package"
 xcrun stapler staple "$PKG"
 xcrun stapler validate "$PKG"
 
+step "Notarizing the uninstaller package (this waits on Apple)"
+xcrun notarytool submit "$UNINSTALL_PKG" --keychain-profile "$NOTARY_PROFILE" --wait
+
+step "Stapling the uninstaller package"
+xcrun stapler staple "$UNINSTALL_PKG"
+
 step "Final Gatekeeper check"
 spctl -a -vvv -t install "$DMG" 2>&1 | sed 's/^/  /'
 spctl -a -vvv -t install "$PKG" 2>&1 | sed 's/^/  /'
+spctl -a -vvv -t install "$UNINSTALL_PKG" 2>&1 | sed 's/^/  /'
 spctl -a -vvv -t execute "$APP" 2>&1 | sed 's/^/  /'
 
-printf '\n\033[32mDone: %s\n      %s\033[0m\n' "$PKG" "$DMG"
+printf '\n\033[32mDone: %s\n      %s\n      %s\033[0m\n' "$PKG" "$UNINSTALL_PKG" "$DMG"
 echo "Next: validate on ANOTHER Mac, downloaded through a browser (or AirDrop)"
 echo "so the quarantine bit is set."

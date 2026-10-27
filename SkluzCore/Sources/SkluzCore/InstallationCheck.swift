@@ -18,7 +18,10 @@ public enum InstallationCheck {
         "Contents/Library/LaunchDaemons/net.haruni.skluzd.plist",
         // Run by admins through /usr/local/bin/skluz.
         "Contents/Helpers",
-        "Contents/Helpers/skluz"
+        "Contents/Helpers/skluz",
+        // Run as root by `sudo skluz uninstall`.
+        "Contents/Resources",
+        "Contents/Resources/skluz-uninstall.sh"
     ]
 
     public struct Problem: Error, Equatable, Sendable, LocalizedError {

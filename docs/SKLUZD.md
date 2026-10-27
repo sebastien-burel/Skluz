@@ -103,13 +103,28 @@ quitter Skluz, remplacer l'app, la relancer et réactiver le service.
 
 ## Désinstallation
 
-Préférences → Service système → **Supprimer le service système…** :
+Trois façons, qui suppriment le service système, l'app et `/usr/local/bin/skluz`
+en **conservant la configuration système** par défaut (une réinstallation
+retrouve tunnels et clés) :
 
-- *garder la configuration* : le service s'arrête, ses fichiers restent pour
-  une réactivation ultérieure ;
-- *supprimer aussi la configuration* : tunnels, clés dédiées, `known_hosts` et
-  `/usr/local/bin/skluz` sont effacés. Les clés sont perdues : retirer aussi
-  leurs lignes des `authorized_keys` côté serveur.
+- **Paquet `Skluz-Uninstall-<version>.pkg`** : double-clic, puis, pour tout
+  effacer, « Personnaliser » → cocher *Effacer aussi la configuration système*.
+- **En SSH** :
+  ```sh
+  sudo skluz uninstall            # demande confirmation ; --yes pour s'en passer
+  sudo skluz uninstall --purge    # efface aussi la configuration système
+  sudo installer -pkg Skluz-Uninstall-<version>.pkg -target /   # sans --purge
+  ```
+- **Préférences → Service système → Supprimer le service système…** : arrête et
+  désenregistre le service (avec ou sans la configuration), sans retirer l'app.
+
+Effacer la configuration supprime les clés dédiées : retirer aussi leurs lignes
+des `authorized_keys` côté serveur. Les tunnels Session de chaque utilisateur
+(`~/Library/Application Support/Skluz`) ne sont jamais touchés.
+
+La commande et le paquet exécutent le même script, livré dans l'app
+(`Contents/Resources/skluz-uninstall.sh`) ; `skluz uninstall` refuse de le
+lancer si l'app n'appartient pas à root.
 
 ## Diagnostic
 
