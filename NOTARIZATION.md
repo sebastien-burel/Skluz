@@ -9,6 +9,10 @@ Réglages projet déjà en place : `CODE_SIGN_STYLE = Automatic`,
 
 ## Raccourci : `Tools/release.sh`
 
+Le script produit aussi **`Skluz-<version>.pkg`**, signé avec le certificat
+**« Developer ID Installer: HARUNI »** et notarisé : c'est l'installation
+recommandée (app au nom de root, sans relocalisation vers une autre copie).
+
 Une fois les prérequis (§0) en place, le script enchaîne les étapes 1 à 6
 et produit un DMG signé, notarisé et agrafé dans `build/release/` :
 

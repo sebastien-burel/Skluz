@@ -48,12 +48,25 @@ affiche la commande de correction dans le menu et dans `skluz status`.
 
 ## Installation
 
+Avec le paquet **`Skluz-<version>.pkg`** (signé et notarisé) : double-clic
+dans le Finder, ou en SSH :
+
 ```sh
-sudo ditto Skluz.app /Applications/Skluz.app       # depuis le DMG monté
+sudo installer -pkg Skluz-<version>.pkg -target /
+open /Applications/Skluz.app        # en session graphique, la première fois
+```
+
+Le paquet installe l'app dans `/Applications`, au nom de root et protégée en
+écriture, comme l'exige le service système : rien d'autre à faire.
+
+<details><summary>Sans le paquet (DMG)</summary>
+
+```sh
+sudo ditto /Volumes/Skluz/Skluz.app /Applications/Skluz.app
 sudo chown -R root:wheel /Applications/Skluz.app
 sudo chmod -R go-w /Applications/Skluz.app
-open /Applications/Skluz.app
 ```
+</details>
 
 1. Préférences → Service système → **Activer**, puis autoriser Skluz dans
    Réglages Système → Général → Ouverture et extensions.
@@ -68,10 +81,11 @@ open /Applications/Skluz.app
 
 ## Mise à jour
 
+Installer le nouveau paquet, comme à l'installation — y compris en SSH sur un
+Mac sans session :
+
 ```sh
-sudo rm -rf /Applications/Skluz.app
-sudo ditto Skluz.app /Applications/Skluz.app
-sudo chown -R root:wheel /Applications/Skluz.app && sudo chmod -R go-w /Applications/Skluz.app
+sudo installer -pkg Skluz-<version>.pkg -target /
 ```
 
 Rien à quitter ni à désactiver : le daemon et l'app surveillent leur propre

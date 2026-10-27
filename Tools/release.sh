@@ -3,11 +3,12 @@
 # release.sh — build a signed, notarized, stapled DMG for direct distribution.
 #
 # Pipeline: archive (Release) -> export with Developer ID -> verify the
-# signature -> notarize + staple the app -> build a DMG -> notarize + staple
-# the DMG -> Gatekeeper check.
+# signature -> notarize + staple the app -> build a DMG and an installer
+# package -> notarize + staple both -> Gatekeeper check.
 #
 # Prerequisites (see NOTARIZATION.md §0):
-#   - A "Developer ID Application" certificate for the team below.
+#   - "Developer ID Application" and "Developer ID Installer" certificates
+#     for the team below.
 #   - A notarytool keychain profile, unless --skip-notarize is passed.
 #
 # Usage:
@@ -16,12 +17,15 @@
 #   Tools/release.sh --from-export      # resume on the app already in build/release/
 #   VERSION=1.0.1 BUILD=42 Tools/release.sh
 #
-# Artifacts land in build/release/ (git-ignored).
+# Artifacts land in build/release/ (git-ignored): Skluz-<version>.pkg, the
+# recommended install (root-owned, as the system service requires), and
+# Skluz-<version>.dmg for a manual drag-and-drop.
 
 set -euo pipefail
 
 TEAM_ID="82FW35VV68"
 IDENTITY="Developer ID Application"
+INSTALLER_IDENTITY="Developer ID Installer"
 SCHEME="Skluz"
 APP_NAME="Skluz"
 NOTARY_PROFILE="${NOTARY_PROFILE:-skluz-notary}"
@@ -46,6 +50,8 @@ trap 'rm -rf "$STAGE"' EXIT
 step "Preflight"
 security find-identity -v -p codesigning | grep -q "$IDENTITY: .*($TEAM_ID)" \
   || fail "no '$IDENTITY' certificate for team $TEAM_ID in the keychain"
+security find-identity -v | grep -q "$INSTALLER_IDENTITY: .*($TEAM_ID)" \
+  || fail "no '$INSTALLER_IDENTITY' certificate for team $TEAM_ID in the keychain"
 if [ "$SKIP_NOTARIZE" -eq 0 ]; then
   xcrun notarytool history --keychain-profile "$NOTARY_PROFILE" >/dev/null 2>&1 \
     || fail "no notarytool profile '$NOTARY_PROFILE' (see NOTARIZATION.md, or pass --skip-notarize)"
@@ -105,6 +111,7 @@ EOF
   [ -d "$APP" ] || fail "export did not produce $APP"
 fi
 DMG="$OUT/$APP_NAME-$VERSION.dmg"
+PKG="$OUT/$APP_NAME-$VERSION.pkg"
 
 # --- Verify the exported app ----------------------------------------------
 # These checks catch what notarization would otherwise reject much later.
@@ -185,10 +192,37 @@ hdiutil create -volname "$APP_NAME" -fs APFS -format ULFO \
 codesign --sign "$IDENTITY" --timestamp "$DMG"
 echo "  $DMG"
 
+# --- Installer package ----------------------------------------------------
+# Installs /Applications/Skluz.app owned by root:wheel and writable only by
+# root, as the system service requires (InstallationCheck), with no manual
+# chown. Works from the Finder and over SSH:
+#   sudo installer -pkg Skluz-<version>.pkg -target /
+step "Building the installer package"
+PKG_ROOT="$STAGE/pkg-root"
+mkdir -p "$PKG_ROOT"
+ditto "$APP" "$PKG_ROOT/$APP_NAME.app"
+COMPONENTS="$STAGE/components.plist"
+pkgbuild --analyze --root "$PKG_ROOT" "$COMPONENTS" >/dev/null
+# Never relocate: Installer would otherwise update any other copy with the
+# same bundle ID it finds (an Xcode build, a copy in Downloads) instead of
+# /Applications.
+/usr/libexec/PlistBuddy -c "Delete :0:BundleIsRelocatable" "$COMPONENTS" 2>/dev/null || true
+/usr/libexec/PlistBuddy -c "Add :0:BundleIsRelocatable bool false" "$COMPONENTS"
+pkgbuild --root "$PKG_ROOT" --component-plist "$COMPONENTS" \
+  --identifier "net.haruni.skluz.pkg" --version "$VERSION" \
+  --install-location /Applications --ownership recommended \
+  "$STAGE/$APP_NAME-component.pkg" | sed 's/^/  /'
+productbuild --package "$STAGE/$APP_NAME-component.pkg" \
+  --identifier "net.haruni.skluz.installer" --version "$VERSION" \
+  --sign "$INSTALLER_IDENTITY: HARUNI ($TEAM_ID)" --timestamp \
+  "$PKG" | sed 's/^/  /'
+pkgutil --check-signature "$PKG" | grep -E "Status|Developer ID Installer" | sed 's/^/  /'
+echo "  $PKG"
+
 # --- Notarize the DMG ------------------------------------------------------
 if [ "$SKIP_NOTARIZE" -eq 1 ]; then
   step "Skipping notarization (--skip-notarize)"
-  echo "  The DMG is signed but NOT notarized: Gatekeeper will warn on another Mac."
+  echo "  The DMG and the package are signed but NOT notarized: Gatekeeper will warn on another Mac."
   exit 0
 fi
 
@@ -199,10 +233,18 @@ step "Stapling the DMG"
 xcrun stapler staple "$DMG"
 xcrun stapler validate "$DMG"
 
+step "Notarizing the installer package (this waits on Apple)"
+xcrun notarytool submit "$PKG" --keychain-profile "$NOTARY_PROFILE" --wait
+
+step "Stapling the installer package"
+xcrun stapler staple "$PKG"
+xcrun stapler validate "$PKG"
+
 step "Final Gatekeeper check"
 spctl -a -vvv -t install "$DMG" 2>&1 | sed 's/^/  /'
+spctl -a -vvv -t install "$PKG" 2>&1 | sed 's/^/  /'
 spctl -a -vvv -t execute "$APP" 2>&1 | sed 's/^/  /'
 
-printf '\n\033[32mDone: %s\033[0m\n' "$DMG"
+printf '\n\033[32mDone: %s\n      %s\033[0m\n' "$PKG" "$DMG"
 echo "Next: validate on ANOTHER Mac, downloaded through a browser (or AirDrop)"
 echo "so the quarantine bit is set."
