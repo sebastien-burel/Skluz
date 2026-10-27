@@ -23,9 +23,14 @@ struct Glyph {
     var strokeFactor: CGFloat
     /// The grey back wave; dropped at small sizes, where it blurs into the other.
     var hasBackWave: Bool
+    /// Heights in unit coordinates, between the gate ends (0.30 and 0.70):
+    /// the beam and the waves are spread so that each band stays distinct.
+    var beamY: CGFloat = 0.650
+    var backWaveY: CGFloat = 0.520
+    var frontWaveY: CGFloat = 0.385
 
-    static let full = Glyph(scale: 0.75, strokeFactor: 1.18, hasBackWave: true)
-    static let small = Glyph(scale: 0.78, strokeFactor: 1.35, hasBackWave: false)
+    static let full = Glyph(scale: 0.95, strokeFactor: 1.18, hasBackWave: true)
+    static let small = Glyph(scale: 0.99, strokeFactor: 1.35, hasBackWave: false, frontWaveY: 0.475)
 }
 
 /// One sine period across the lock, in unit coordinates centered on (0.5, 0.5).
@@ -84,15 +89,13 @@ func render(side: Int, glyph: Glyph) -> CGImage {
     let left: CGFloat = 0.285, right: CGFloat = 0.715
     // Water behind the gates, so the gates read in front.
     if glyph.hasBackWave {
-        stroke(wave(at: 0.535, amplitude: 0.022, from: left, to: right), mist)
-        stroke(wave(at: 0.445, amplitude: 0.022, from: left, to: right), teal)
-    } else {
-        stroke(wave(at: 0.465, amplitude: 0.022, from: left, to: right), teal)
+        stroke(wave(at: glyph.backWaveY, amplitude: 0.022, from: left, to: right), mist)
     }
+    stroke(wave(at: glyph.frontWaveY, amplitude: 0.022, from: left, to: right), teal)
     for x: CGFloat in [0.395, 0.605] {
         stroke(line(from: NSPoint(x: x, y: 0.300), to: NSPoint(x: x, y: 0.700)), .white)
     }
-    stroke(line(from: NSPoint(x: left, y: 0.625), to: NSPoint(x: right, y: 0.625)), .white)
+    stroke(line(from: NSPoint(x: left, y: glyph.beamY), to: NSPoint(x: right, y: glyph.beamY)), .white)
 
     NSGraphicsContext.restoreGraphicsState()
     return context.makeImage()!
