@@ -119,6 +119,12 @@ public final class DaemonClient: @unchecked Sendable {
         }
     }
 
+    public func uninstallApp(purge: Bool) async throws {
+        try await call { proxy, done in
+            proxy.uninstallApp(purge: purge) { done(Self.check($0)) }
+        }
+    }
+
     // MARK: - Plumbing
 
     /// Resumes exactly once, from the reply or from the connection error.

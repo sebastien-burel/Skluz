@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="fr"><head><meta charset="utf-8">
+<style>body { font: 13px -apple-system, sans-serif; line-height: 1.45; } h2 { font-size: 15px; } li { margin: 3px 0; }</style>
+</head><body>
+<h2>Ce programme désinstalle Skluz</h2>
+<p>Il ne s'installe rien : l'Installateur de macOS nomme son bouton
+« Installer », mais cliquer dessus <strong>lance la désinstallation</strong>.</p>
+<p>Seront supprimés :</p>
+<ul>
+  <li>le service système de Skluz et ses tunnels Système, arrêtés proprement ;</li>
+  <li>l'app <code>/Applications/Skluz.app</code>, quittée chez chaque utilisateur ;</li>
+  <li>la commande <code>skluz</code> (<code>/usr/local/bin/skluz</code>).</li>
+</ul>
+<p>Sont <strong>conservés</strong>, sauf si vous cochez l'option dans
+« Personnaliser » :</p>
+<ul>
+  <li>la configuration système : tunnels Système, clés dédiées et clés d'hôte
+      approuvées, pour qu'une réinstallation les retrouve.</li>
+</ul>
+<p>Les tunnels Session de chaque utilisateur ne sont jamais touchés.</p>
+</body></html>

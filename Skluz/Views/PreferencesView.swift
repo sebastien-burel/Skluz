@@ -12,6 +12,8 @@ struct PreferencesView: View {
     @State private var installationProblem: InstallationCheck.Problem? = DaemonManager.installationProblem
     @State private var cliInstalled = false
     @State private var isConfirmingRemoval = false
+    @State private var isConfirmingUninstall = false
+    @State private var uninstallError: String?
     @Environment(\.dismiss) private var dismiss
 
     private var launchAtLogin: Binding<Bool> {
@@ -178,6 +180,30 @@ struct PreferencesView: View {
                     }
                 }
 
+                Section("Désinstallation") {
+                    if system.canManage {
+                        Button("Désinstaller Skluz…", role: .destructive) { isConfirmingUninstall = true }
+                            .controlSize(.small)
+                            .confirmationDialog("Désinstaller Skluz ?", isPresented: $isConfirmingUninstall) {
+                                Button("Désinstaller, garder la configuration") { uninstallApp(purge: false) }
+                                Button("Désinstaller et tout effacer", role: .destructive) { uninstallApp(purge: true) }
+                            } message: {
+                                Text("Le service système et ses tunnels s'arrêtent, puis l'app et la commande skluz sont "
+                                     + "supprimées. Garder la configuration permet de retrouver tunnels et clés en "
+                                     + "réinstallant ; tout effacer supprime aussi les clés dédiées, définitivement.")
+                            }
+                    } else {
+                        Text("Dans le Terminal : sudo skluz uninstall (--purge pour effacer aussi la configuration), "
+                             + "ou le paquet « Skluz — Désinstallation ».")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                    }
+                    if let uninstallError {
+                        Text(uninstallError).font(.caption).foregroundStyle(.red)
+                    }
+                }
+
                 Section {
                     LabeledContent("Version", value: appVersion)
                     LabeledContent("Éditeur", value: "Haruni SAS")
@@ -217,6 +243,18 @@ struct PreferencesView: View {
                 runDaemonAction(DaemonManager.unregister)
             } catch {
                 daemonError = "Échec : \(error.localizedDescription)"
+            }
+        }
+    }
+
+    /// The daemon runs the uninstall script, which also quits this app.
+    private func uninstallApp(purge: Bool) {
+        Task {
+            do {
+                try await system.uninstallApp(purge: purge)
+                uninstallError = nil
+            } catch {
+                uninstallError = "Échec : \(error.localizedDescription)"
             }
         }
     }

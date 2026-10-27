@@ -196,6 +196,36 @@ final class DaemonService: NSObject, SkluzDaemonProtocol, @unchecked Sendable {
         }
     }
 
+    func uninstallApp(purge: Bool, reply: @escaping @Sendable (String?) -> Void) {
+        adminOnly("uninstallApp", reply: reply) {
+            do {
+                let bundle = try Self.bundledCommandLineTool()
+                    .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+                // The script runs as root: only from a bundle nobody else can write.
+                if let problem = InstallationCheck.firstProblem(bundle: bundle) { throw problem }
+                let script = bundle.appending(path: "Contents/Resources/skluz-uninstall.sh")
+                let log = URL(fileURLWithPath: "/Library/Logs/Skluz-uninstall.log")
+                if !FileManager.default.fileExists(atPath: log.path) {
+                    FileManager.default.createFile(atPath: log.path, contents: nil)
+                }
+                let output = try FileHandle(forWritingTo: log)
+                output.seekToEndOfFile()
+                let process = Process()
+                process.executableURL = URL(fileURLWithPath: "/bin/sh")
+                process.arguments = [script.path(percentEncoded: false)] + (purge ? ["--purge"] : [])
+                process.standardInput = FileHandle.nullDevice
+                process.standardOutput = output
+                process.standardError = output
+                // Its own process group: it survives the daemon it stops.
+                try process.run()
+                Log.config.info("Désinstallation lancée\(purge ? ", configuration comprise" : "") (pid \(process.processIdentifier)).")
+                reply(nil)
+            } catch {
+                reply(error.localizedDescription)
+            }
+        }
+    }
+
     // MARK: - CLI
 
     func installCommandLineTool(reply: @escaping @Sendable (String?) -> Void) {

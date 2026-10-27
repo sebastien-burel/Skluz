@@ -47,6 +47,10 @@ import Foundation
     /// /usr/local/bin/skluz link to this app. Admins only; the app then
     /// unregisters the service.
     func purgeConfiguration(reply: @escaping @Sendable (String?) -> Void)
+    /// Removes Skluz entirely (service, app, skluz link; the system
+    /// configuration too if `purge`) with the script shipped in the app,
+    /// detached so that it outlives the daemon it stops. Admins only.
+    func uninstallApp(purge: Bool, reply: @escaping @Sendable (String?) -> Void)
 }
 
 public enum DaemonAPI {

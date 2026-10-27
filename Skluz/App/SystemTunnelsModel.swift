@@ -152,6 +152,11 @@ final class SystemTunnelsModel {
         }
     }
 
+    /// Removes Skluz entirely, run by the daemon as root.
+    func uninstallApp(purge: Bool) async throws {
+        try await connection().uninstallApp(purge: purge)
+    }
+
     /// Uninstall, before unregistering: tunnels stopped, root files deleted.
     func purgeConfiguration() async throws {
         try await connection().purgeConfiguration()

@@ -22,6 +22,8 @@ LABEL="net.haruni.skluzd"
 
 say() { echo "skluz-uninstall: $*"; }
 
+say "$(date '+%Y-%m-%d %H:%M:%S') — start$([ "$PURGE" = 1 ] && echo ', configuration included')"
+
 # 1. Stop the system service. On SIGTERM skluzd closes every ssh tunnel.
 if launchctl print "system/$LABEL" >/dev/null 2>&1; then
   say "stopping the system service"

@@ -241,7 +241,8 @@ for flavor in base purge; do
   cp "$UNINSTALLER_SCRIPT" "$scripts/skluz-uninstall.sh"
   option=""
   [ "$flavor" = purge ] && option=" --purge"
-  printf '#!/bin/sh\nexec /bin/sh "$(dirname "$0")/skluz-uninstall.sh"%s\n' "$option" > "$scripts/postinstall"
+  printf '#!/bin/sh\nexec /bin/sh "$(dirname "$0")/skluz-uninstall.sh"%s >> /Library/Logs/Skluz-uninstall.log 2>&1\n' \
+    "$option" > "$scripts/postinstall"
   chmod 755 "$scripts/postinstall"
   pkgbuild --nopayload --scripts "$scripts" \
     --identifier "net.haruni.skluz.uninstall.$flavor" --version "$VERSION" \
@@ -250,7 +251,9 @@ done
 cat > "$STAGE/uninstall-distribution.xml" <<DIST
 <?xml version="1.0" encoding="utf-8"?>
 <installer-gui-script minSpecVersion="1">
-    <title>Désinstaller $APP_NAME</title>
+    <title>$APP_NAME — Désinstallation</title>
+    <welcome file="welcome.html" mime-type="text/html"/>
+    <conclusion file="conclusion.html" mime-type="text/html"/>
     <options customize="allow" require-scripts="true" hostArchitectures="arm64,x86_64"/>
     <choices-outline>
         <line choice="uninstall"/>
@@ -269,6 +272,7 @@ cat > "$STAGE/uninstall-distribution.xml" <<DIST
 </installer-gui-script>
 DIST
 productbuild --distribution "$STAGE/uninstall-distribution.xml" --package-path "$STAGE/uninstall-components" \
+  --resources "$ROOT/Tools/uninstaller" \
   --identifier "net.haruni.skluz.uninstaller" --version "$VERSION" \
   --sign "$INSTALLER_IDENTITY: HARUNI ($TEAM_ID)" --timestamp \
   "$UNINSTALL_PKG" | sed 's/^/  /'
