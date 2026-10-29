@@ -149,7 +149,7 @@ sudo sfltool dumpbtm | grep -B3 -A8 skluzd
 | État `hostKeyUnknown` | Clé d'hôte jamais approuvée : éditer le tunnel, étape 2. |
 | État `hostKeyChanged` | La clé du serveur a changé : **ne rien approuver** avant d'avoir compris pourquoi (réinstallation du serveur ou attaque). |
 | `Permission denied (publickey)` | La ligne `authorized_keys` de la clé dédiée manque côté serveur. |
-| Up mais « le serveur refuse la redirection » | `permitopen` de la clé ne correspond pas à l'hôte et au port distants. |
+| Up mais « le serveur refuse la redirection » | `permitopen` de la clé ne correspond pas à l'hôte et au port distants. Si une même clé sert à plusieurs tunnels vers un serveur, sshd n'applique que la **première** ligne de cette clé : une seule ligne avec plusieurs `permitopen` (l'éditeur la propose). |
 | Up mais « aucun service n'écoute » | Rien n'écoute sur le port distant côté serveur. |
 | Bandeau « configuration refusée » | Fichiers mal protégés : exécuter la commande affichée. |
 | Activation : « Operation not permitted » | Voir « Pièges ». |

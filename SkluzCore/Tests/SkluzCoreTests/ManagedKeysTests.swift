@@ -122,6 +122,15 @@ struct ManagedKeysTests {
         }
     }
 
+    /// sshd ignores a second line for the same key: one line, every permitopen.
+    @Test func sharedKeyGetsASingleLineWithEveryDestination() {
+        let line = ManagedKeys.restrictedAuthorizedKeysLine(
+            publicKey: "ssh-ed25519 AAAA k",
+            destinations: [("localhost", 8817), ("localhost", 5900), ("localhost", 8817)])
+        #expect(line == "restrict,port-forwarding,permitopen=\"localhost:8817\",permitopen=\"localhost:5900\","
+                + "command=\"/bin/false\" ssh-ed25519 AAAA k")
+    }
+
     @Test func restrictedAuthorizedKeysLine() {
         #expect(ManagedKeys.restrictedAuthorizedKeysLine(publicKey: "ssh-ed25519 AAAA skluzd@macmini",
                                                          remoteHost: "localhost", remotePort: 8000)

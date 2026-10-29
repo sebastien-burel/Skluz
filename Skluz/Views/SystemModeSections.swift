@@ -37,6 +37,14 @@ struct SystemKeySection: View {
                     Text("Ajoutez cette ligne à ~/.ssh/authorized_keys de « \(userLabel) » sur \(hostLabel) :")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                    if !sharingTunnels(of: key).isEmpty {
+                        Label("Cette clé sert aussi à \(sharingTunnels(of: key).map(\.name).joined(separator: ", ")) : "
+                              + "cette ligne unique ouvre tous leurs ports et doit REMPLACER la ligne existante "
+                              + "de la clé (sshd n'applique que la première ligne d'une même clé).",
+                              systemImage: "exclamationmark.triangle")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                    }
                     Text(authorizedKeysLine(for: key))
                         .font(.caption2.monospaced())
                         .textSelection(.enabled)
@@ -66,12 +74,22 @@ struct SystemKeySection: View {
     private var userLabel: String { draft.sshUser.isEmpty ? "utilisateur" : draft.sshUser }
     private var hostLabel: String { draft.sshHost.isEmpty ? "le serveur" : draft.sshHost }
 
+    /// Other System tunnels using this key to log into the same account of
+    /// the same server: they share its authorized_keys line.
+    private func sharingTunnels(of key: ManagedKey) -> [TunnelConfig] {
+        system.tunnels.filter {
+            $0.id != draft.id && $0.keyRef == .managed(key.name)
+                && $0.host == draft.sshHost && ($0.user ?? "") == draft.sshUser
+        }
+    }
+
     private func authorizedKeysLine(for key: ManagedKey) -> String {
-        ManagedKeys.restrictedAuthorizedKeysLine(
-            publicKey: key.publicKey,
-            remoteHost: draft.remoteHost.isEmpty ? "localhost" : draft.remoteHost,
-            remotePort: Int(draft.remotePortText) ?? 0
-        )
+        let current = (host: draft.remoteHost.isEmpty ? "localhost" : draft.remoteHost,
+                       port: Int(draft.remotePortText) ?? 0)
+        let others = sharingTunnels(of: key).map {
+            (host: $0.remoteHost ?? "localhost", port: $0.remotePort ?? $0.localPort)
+        }
+        return ManagedKeys.restrictedAuthorizedKeysLine(publicKey: key.publicKey, destinations: others + [current])
     }
 
     private func generate() {
